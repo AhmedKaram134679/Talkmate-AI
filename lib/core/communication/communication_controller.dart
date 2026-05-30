@@ -2050,7 +2050,14 @@ class CommunicationController extends GetxController
             webrtc.RTCSessionDescription(null, 'rollback'));
         addLog('✅ [P4] Glare: polite rollback before applying remote offer.');
       } catch (e) {
-        addLog('⚠️ [P4] Glare rollback failed/unsupported: $e');
+        // [REPAIR P4]: If rollback fails the peer is still in HaveLocalOffer,
+        // so setRemoteDescription(offer) below would throw InvalidStateError and
+        // the renegotiation would fail silently. Abandon this renegotiation
+        // instead; the call is still active and the user can retry by toggling
+        // the camera again (which re-sends an offer once we return to stable).
+        addLog(
+            '⚠️ [P4] Glare rollback failed/unsupported: $e. Abandoning this renegotiation (retryable).');
+        return;
       }
     }
 
