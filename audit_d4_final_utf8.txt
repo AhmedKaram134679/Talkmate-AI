@@ -1,0 +1,4 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\chats_screen.dart:353:28 - avoid_dynamic_calls
+

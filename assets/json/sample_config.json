@@ -1,0 +1,6 @@
+{
+  "appName": "TalkMate AI",
+  "version": "1.0.0",
+  "features": ["chat", "webrtc_calls", "notifications"],
+  "theme": {"primary": "#4F46E5", "mode": "dark"}
+}

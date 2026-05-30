@@ -1,0 +1,64 @@
+﻿Analyzing talkmate_ai...                                        
+
+warning - Unused import: 'package:connectivity_plus/connectivity_plus.dart' - lib\controllers\chat_controller.dart:4:8 - unused_import
+   info - Sort directive sections alphabetically - lib\controllers\chat_controller.dart:14:1 - directives_ordering
+warning - The operand can't be 'null', so the condition is always 'true' - lib\controllers\chat_controller.dart:1947:20 - unnecessary_null_comparison
+   info - Method invocation or property access on a 'dynamic' target - lib\core\app_brain\self_awareness\memory\decision_memory_store.dart:19:29 - avoid_dynamic_calls
+warning - Unnecessary cast - lib\data\repositories\compliance_repository.dart:31:24 - unnecessary_cast
+   info - Unclosed instance of 'Sink' - lib\data\repositories\local\local_message_repository_native.dart:58:11 - close_sinks
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:111:25 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:127:25 - unawaited_futures
+  error - Missing concrete implementations of 'abstract class IFriendshipRepository.acceptFriendRequest', 'abstract class IFriendshipRepository.areFriends', 'abstract class IFriendshipRepository.close', 'abstract class IFriendshipRepository.createFriendship', and 6 more - lib\data\repositories\mocks\mock_friendship_repository.dart:4:7 - non_abstract_class_inherits_abstract_member
+  error - Function expressions can't be named - lib\data\repositories\mocks\mock_friendship_repository.dart:15:10 - named_function_expression
+  error - The argument type 'String Function(String, String)' can't be assigned to the parameter type 'String'.  - lib\data\repositories\mocks\mock_friendship_repository.dart:15:14 - argument_type_not_assignable
+  error - Expected to find ';' - lib\data\repositories\mocks\mock_friendship_repository.dart:18:3 - expected_token
+warning - Dead code - lib\data\repositories\mocks\mock_friendship_repository.dart:20:3 - dead_code
+  error - 2 positional arguments expected by 'putIfAbsent', but 1 found - lib\data\repositories\mocks\mock_friendship_repository.dart:20:3 - not_enough_positional_arguments
+  error - Expected to find ')' - lib\data\repositories\mocks\mock_friendship_repository.dart:20:3 - expected_token
+warning - The declaration 'sendFriendRequest' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:21:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:22:22 - undefined_method
+warning - The declaration 'acceptFriendRequest' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:26:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:27:22 - undefined_method
+warning - The declaration 'rejectFriendRequest' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:31:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:32:25 - undefined_method
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_friendship_repository.dart:37:11 - close_sinks
+warning - The declaration 'createFriendship' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:52:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:54:22 - undefined_method
+warning - The declaration 'areFriends' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:58:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:59:34 - undefined_method
+warning - The declaration 'getAllForUser' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:63:24 - unused_element
+warning - The declaration 'watchAllForUser' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:71:24 - unused_element
+warning - The declaration 'deleteFriendship' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:74:16 - unused_element
+  error - The method '_key' isn't defined for the type 'MockFriendshipRepository' - lib\data\repositories\mocks\mock_friendship_repository.dart:75:25 - undefined_method
+warning - The declaration 'close' isn't referenced - lib\data\repositories\mocks\mock_friendship_repository.dart:79:16 - unused_element
+  error - Expected to find '}' - lib\data\repositories\mocks\mock_friendship_repository.dart:86:1 - expected_token
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_message_repository.dart:27:11 - close_sinks
+   info - Sort directive sections alphabetically - lib\data\services\chat_sync_engine.dart:8:1 - directives_ordering
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:72:5 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:136:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:170:9 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:180:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:195:33 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\database_service_native.dart:85:8 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:628:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:636:17 - unawaited_futures
+warning - Unnecessary cast - lib\features\webrtc\controllers\webrtc_call_controller.dart:401:27 - unnecessary_cast
+  error - The method 'unawaited' isn't defined for the type 'IncomingWebRtcCallScreen' - lib\features\webrtc\screens\incoming_webrtc_call_screen.dart:175:25 - undefined_method
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1513:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1555:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:2544:36 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:375:13 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:399:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:785:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:827:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:841:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:891:22 - unawaited_futures
+warning - The value of the local variable 'meta' isn't used - lib\screens\compliance_dashboard_screen.dart:162:11 - unused_local_variable
+  error - Expected an identifier - lib\screens\compliance_dashboard_screen.dart:181:13 - missing_identifier
+  error - Expected to find ']' - lib\screens\compliance_dashboard_screen.dart:181:13 - expected_token
+  error - The method 'unawaited' isn't defined for the type '_CreateGroupScreenState' - lib\screens\create_group_screen.dart:111:7 - undefined_method
+  error - The method 'unawaited' isn't defined for the type '_FriendsScreenState' - lib\screens\friends_screen.dart:285:7 - undefined_method
+  error - The method 'unawaited' isn't defined for the type '_OnboardingScreenState' - lib\screens\onboarding_screen.dart:158:5 - undefined_method
+  error - The method 'unawaited' isn't defined for the type '_ProfileScreenState' - lib\screens\profile_screen.dart:449:7 - undefined_method
+  error - The getter 'system_trust_index' isn't defined for the type 'NotificationAiSettings' - lib\screens\settings\ai_learning_dashboard_screen.dart:55:10 - undefined_getter
+

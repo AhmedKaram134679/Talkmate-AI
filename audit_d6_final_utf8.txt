@@ -1,0 +1,5 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Sort directive sections alphabetically - lib\core\bootstrapper.dart:24:1 - directives_ordering
+   info - Sort directive sections alphabetically - lib\core\predictive\predictive_engine.dart:4:1 - directives_ordering
+

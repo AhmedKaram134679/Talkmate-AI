@@ -1,0 +1,65 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() { return request.auth != null && request.auth.uid != null; }
+    // Checks whether the current user is a participant of chat {chatId}
+    function isChatParticipant(chatId) {
+      return isSignedIn() &&
+        (request.auth.uid in get(/databases/(default)/documents/chats/$(chatId)).data.participants);
+    }
+    // Ensures uploaded object is PNG or JPEG and smaller than 5 MB
+    function isValidImageUpload() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg)');
+    }
+
+    // ------------------------------------------------------------------
+    // Default: deny all reads and writes (principle of least privilege)
+    // More specific rules below will selectively allow access.
+    // ------------------------------------------------------------------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // Users Area
+    // Each user can read and write ONLY inside their own folder:
+    //   users/{userId}/...
+    // No access to other users' folders.
+    // ------------------------------------------------------------------
+    match /users/{userId}/{allPaths=**} {
+      // Read: only owner
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      // Write: only owner, and restrict uploads to image/* up to 5MB
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidImageUpload();
+    }
+
+    // ------------------------------------------------------------------
+    // Chats Area
+    // Chat attachments are stored under each user's subfolder:
+    //   chats/{chatId}/users/{userId}/...
+    // - Write: only by the owner of {userId}
+    // - Read: any authenticated user
+    // (يمكن تضييق القراءة لاحقًا حسب عضوية المحادثة إذا لزم)
+    // ------------------------------------------------------------------
+    match /chats/{chatId}/users/{userId}/{allPaths=**} {
+      // Write: only owner of {userId}, and restrict uploads to image/* up to 5MB
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidImageUpload();
+      // Read: only participants of the chat {chatId}
+      allow read: if isChatParticipant(chatId);
+    }
+
+    // ------------------------------------------------------------------
+    // Public Area
+    // Anyone can read without authentication.
+    // Only authenticated users can write.
+    //   public/...
+    // ------------------------------------------------------------------
+    match /public/{allPaths=**} {
+      // Open read to everyone
+      allow read: if true;
+      // Writes require authentication AND must be image/* up to 5MB
+      allow write: if isSignedIn() && isValidImageUpload();
+    }
+  }
+}

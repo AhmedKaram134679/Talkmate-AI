@@ -1,0 +1,5 @@
+﻿Analyzing talkmate_ai...                                        
+
+warning - Unused import: 'package:talkmate_ai/core/utils/app_logger.dart' - lib\data\repositories\compliance_repository.dart:2:8 - unused_import
+  error - A try block must be followed by an 'on', 'catch', or 'finally' clause - lib\data\repositories\compliance_repository.dart:17:7 - missing_catch_or_finally
+

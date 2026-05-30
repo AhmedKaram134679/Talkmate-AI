@@ -1,0 +1,70 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Native build outputs
+third_party/**/build/
+third_party/**/.gradle/
+android/.gradle/
+android/.kotlin/
+android/app/.cxx/
+**/.cxx/
+android/local.properties
+
+# Large native SDK (re-downloaded automatically)
+windows/firebase_cpp_sdk/
+firebase_cpp_sdk_*/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Keystores / signing
+*.keystore
+*.jks
+
+# iOS / macOS
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+
+# SECRETS - never commit
+.env
+.env.*
+firebase-service-account.json
+**/service-account.json
+google-services.json
+GoogleService-Info.plist
+firebase.json.bak
+*.bak
+
+# Archives / big binaries
+*.rar
+*.zip
+
+# Logs / audit dumps
+*.log
+analysis_*.txt
+analyze_*.txt
+analyzer_report*.txt
+absolute_final_audit*.txt
+production_audit*.txt
+robocopy_log.txt
+
+# stray root images
+/*.jpg
+
+# Vendored package example apps + native debug/build artifacts
+third_party/**/example/
+**/ephemeral/
+*.pdb
+*.exe
+*.dll
+*.dylib

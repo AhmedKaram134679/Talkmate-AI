@@ -1,0 +1,706 @@
+{
+  "appName": "TalkMate AI",
+  "search": "البحث",
+  "chats": "المحادثات",
+  "calls": "المكالمات",
+  "groups": "المجموعات",
+  "profile": "الملف الشخصي",
+  "settings": "الإعدادات",
+  "login": "تسجيل الدخول",
+  "register": "إنشاء حساب",
+  "continueAsGuest": "دخول كضيف",
+  "logout": "تسجيل الخروج",
+  "welcome": "مرحباً بك في TalkMate AI",
+  "comingSoon": "متاحة قريباً"
+  ,"tooltipChangeTheme": "تغيير الثيم"
+  ,"tooltipChangeLanguage": "تغيير اللغة"
+  ,"snackTestTitle": "اختبار"
+  ,"snackTestMessage": "تم النقر {count} مرة! 🎉",
+  "@snackTestMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
+  ,"guest": "ضيف"
+  ,"appTagline": "تطبيق المحادثة والمكالمات الذكي"
+  ,"runningOk": "✅ يعمل بنجاح!"
+  ,"appStatus": "حالة التطبيق:"
+  ,"platform": "المنصة"
+  ,"theme": "الثيم"
+  ,"language": "اللغة"
+  ,"user": "المستخدم"
+  ,"loggedIn": "مسجل الدخول"
+  ,"clickCount": "عدد النقرات"
+  ,"availableFeatures": "الميزات المتاحة:"
+  ,"instantMessaging": "المحادثات الفورية"
+  ,"voiceCalls": "المكالمات الصوتية"
+  ,"videoCalls": "مكالمات الفيديو"
+  ,"groupsFeature": "المجموعات"
+  ,"securityPrivacy": "الأمان والخصوصية"
+  ,"settingsHeader": "الإعدادات:"
+  ,"deleteMessageTitle": "حذف الرسالة"
+  ,"deleteMessageConfirm": "هل تريد بالتأكيد حذف هذه الرسالة؟"
+  ,"cancel": "إلغاء"
+  ,"delete": "حذف"
+  ,"profile": "الملف الشخصي"
+  ,"online": "متصل"
+  ,"statusInCall": "في مكالمة"
+  ,"statusInRoomVoice": "في غرفة صوتية"
+  ,"statusInRoomVideo": "في غرفة فيديو"
+  ,"appearanceLanguage": "المظهر واللغة"
+  ,"darkMode": "الوضع الداكن"
+  ,"darkModeHint": "تفعيل الثيم الداكن للتطبيق"
+  ,"arabic": "العربية"
+  ,"english": "الإنجليزية"
+  ,"notifications": "الإشعارات"
+  ,"enableNotifications": "تفعيل الإشعارات"
+  ,"newMessagesNotifications": "استقبال إشعارات الرسائل الجديدة"
+  ,"notificationSound": "صوت الإشعارات"
+  ,"playSoundOnNotifications": "تشغيل صوت عند وصول الإشعارات"
+  ,"notificationVibration": "اهتزاز الإشعارات"
+  ,"vibrateOnNotifications": "اهتزاز الجهاز عند وصول الإشعارات"
+  ,"testNotifications": "اختبار الإشعارات"
+  ,"sendTestNotification": "إرسال إشعار تجريبي"
+  ,"privacySecurity": "الخصوصية والأمان"
+  ,"password": "كلمة المرور"
+  ,"changePassword": "تغيير كلمة المرور"
+  ,"blockedUsers": "المستخدمون المحظورون"
+  ,"manageBlockedUsers": "إدارة قائمة المحظورين"
+  ,"privacySettings": "إعدادات الخصوصية"
+  ,"whoCanSeeInfo": "من يمكنه رؤية معلوماتك"
+  ,"aboutApp": "حول التطبيق"
+  ,"appInfo": "معلومات التطبيق"
+  ,"appVersionLabel": "الإصدار {version}"
+  ,"@appVersionLabel": {"placeholders": {"version": {"type": "String"}}}
+  ,"developerLabel": "المطور: {name}"
+  ,"@developerLabel": {"placeholders": {"name": {"type": "String"}}}
+  ,"helpSupport": "المساعدة والدعم"
+  ,"faqSupport": "الأسئلة الشائعة والدعم الفني"
+  ,"termsOfUse": "شروط الاستخدام"
+  ,"readTerms": "اقرأ شروط وأحكام الاستخدام"
+  ,"privacyPolicy": "سياسة الخصوصية"
+  ,"howWeProtectData": "كيف نحمي بياناتك"
+  ,"account": "الحساب"
+  ,"logoutHint": "الخروج من الحساب الحالي"
+  ,"deleteAccount": "حذف الحساب"
+  ,"deleteAccountPermanently": "حذف الحساب نهائياً"
+  ,"chooseLanguage": "اختر اللغة"
+  ,"ok": "موافق"
+  ,"confirmLogout": "هل أنت متأكد من تسجيل الخروج؟"
+  ,"confirmDeleteAccount": "هل أنت متأكد من حذف الحساب؟ هذا الإجراء لا يمكن التراجع عنه."
+  ,"newChat": "محادثة جديدة"
+  ,"searchChatsHint": "البحث في المحادثات..."
+  ,"noChatsYet": "لا توجد محادثات بعد"
+  ,"startNewChatWithFriends": "ابدأ محادثة جديدة مع أصدقائك"
+  ,"startNewChat": "بدء محادثة جديدة"
+  ,"archive": "أرشفة"
+  ,"unarchive": "إلغاء الأرشفة"
+  ,"mute": "كتم"
+  ,"unmute": "إلغاء الكتم"
+  ,"pin": "تثبيت"
+  ,"unpin": "إلغاء التثبيت"
+  ,"newChatTitle": "محادثة جديدة"
+  ,"chooseChatType": "اختر نوع المحادثة التي تريد إنشاؤها"
+  ,"individualChat": "محادثة فردية"
+  ,"group": "مجموعة"
+  ,"createIndividualChat": "إنشاء محادثة فردية"
+  ,"personNameHint": "اسم الشخص"
+  ,"create": "إنشاء"
+  ,"createGroup": "إنشاء مجموعة"
+  ,"groupNameHint": "اسم المجموعة"
+  ,"deleteChatTitle": "حذف المحادثة",
+  "deleteChatConfirmWithName": "هل أنت متأكد من حذف محادثة {name}؟",
+  "@deleteChatConfirmWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "deleteChat": "حذف المحادثة",
+  "searchInChatHint": "ابحث داخل المحادثة...",
+  "typing": "يكتب...",
+  "searchOptions": "خيارات البحث",
+  "matchCase": "حسّاس لحالة الأحرف",
+  "wholeWord": "كلمة كاملة",
+  "useRegex": "استخدام Regex",
+  "previous": "السابق",
+  "next": "التالي",
+  "closeSearch": "إغلاق البحث",
+  "notifications": "الإشعارات",
+  "notificationsEnabled": "تم تفعيل الإشعارات",
+  "notificationsDisabled": "تم إيقاف الإشعارات",
+  "notificationSound": "صوت الإشعارات",
+  "notificationSoundEnabled": "تم تفعيل صوت الإشعارات",
+  "notificationSoundDisabled": "تم إيقاف صوت الإشعارات",
+  "notificationVibration": "اهتزاز الإشعارات",
+  "notificationVibrationEnabled": "تم تفعيل اهتزاز الإشعارات",
+  "notificationVibrationDisabled": "تم إيقاف اهتزاز الإشعارات",
+  "notificationTitle": "إشعار",
+  "openChatFromNotificationWithId": "فتح المحادثة من الإشعار: {chatId}",
+  "@openChatFromNotificationWithId": {"placeholders": {"chatId": {"type": "Object"}}},
+  "messageTypeImage": "📷 صورة",
+  "messageTypeVideo": "🎥 فيديو",
+  "messageTypeAudio": "🎵 رسالة صوتية",
+  "messageTypeFile": "📎 ملف",
+  "messageTypeLocation": "📍 موقع",
+  "messageTypeContact": "👤 جهة اتصال",
+  "incomingCallTitleWithType": "مكالمة {callType} واردة",
+  "@incomingCallTitleWithType": {"placeholders": {"callType": {"type": "Object"}}},
+  "fromCallerName": "من {callerName}",
+  "@fromCallerName": {"placeholders": {"callerName": {"type": "Object"}}},
+  "callsChannelName": "مكالمات TalkMate",
+  "callsChannelDescription": "إشعارات المكالمات الواردة",
+  "answer": "رد",
+  "decline": "رفض",
+  "testChannelName": "اختبار الإشعارات",
+  "testChannelDescription": "قناة اختبار الإشعارات",
+  "notificationsTestTitle": "اختبار الإشعارات",
+  "notificationsTestBody": "هذا إشعار تجريبي من TalkMate AI 🚀",
+  "sent": "تم الإرسال",
+  "testNotificationSent": "تم إرسال إشعار تجريبي بنجاح",
+  "error": "خطأ",
+  "testNotificationFailedWithError": "فشل في إرسال الإشعار التجريبي: {error}",
+  "@testNotificationFailedWithError": {"placeholders": {"error": {"type": "Object"}}},
+  "testNotificationDialogTitle": "إشعار تجريبي",
+  "testNotificationDialogBody": "نظام الإشعارات يعمل بشكل صحيح!",
+  "ok": "موافق",
+  "testNotificationShown": "تم عرض الإشعار التجريبي بنجاح",
+  "updated": "تم التحديث",
+  "chatsUpdatedSuccessfully": "تم تحديث المحادثات بنجاح",
+  "updateChatsError": "حدث خطأ أثناء تحديث المحادثات",
+  "newChat": "محادثة جديدة",
+  "chatCreatedWithName": "تم إنشاء محادثة مع {name}",
+  "@chatCreatedWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "newGroup": "مجموعة جديدة",
+  "groupCreatedWithName": "تم إنشاء مجموعة {name}",
+  "@groupCreatedWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "deleted": "تم الحذف",
+  "chatDeleted": "تم حذف المحادثة",
+  "archived": "تم الأرشفة",
+  "unarchive": "إلغاء الأرشفة",
+  "chatArchived": "تم أرشفة المحادثة",
+  "chatUnarchived": "تم إلغاء أرشفة المحادثة",
+  "muted": "تم الكتم",
+  "unmuted": "تم إلغاء الكتم",
+  "chatMuted": "تم كتم إشعارات المحادثة",
+  "chatUnmuted": "تم إلغاء كتم إشعارات المحادثة",
+  "cleared": "تم المسح",
+  "allChatMessagesCleared": "تم مسح جميع رسائل المحادثة",
+  "messageDeleted": "تم حذف الرسالة",
+  "videoCall": "مكالمة فيديو",
+  "voiceCall": "مكالمة صوتية",
+  "viewProfile": "عرض الملف الشخصي",
+  "searchInChat": "بحث داخل المحادثة",
+  "muteNotifications": "كتم الإشعارات",
+  "clearChat": "مسح المحادثة",
+  "startConversation": "ابدأ المحادثة",
+  "writeFirstMessage": "اكتب رسالتك الأولى لبدء المحادثة",
+  "chatToday": "اليوم",
+  "chatYesterday": "أمس",
+  "attachFile": "إرفاق ملف",
+  "emoji": "رموز تعبيرية",
+  "typeMessageHint": "اكتب رسالة...",
+  "messageSentTitle": "تم الإرسال",
+  "messageSentSuccess": "تم إرسال الرسالة بنجاح",
+  "comingSoon": "سيتم إضافة هذه الميزة قريباً",
+  "profileTitle": "الملف الشخصي",
+  "profileViewComingSoon": "سيتم إضافة عرض الملف الشخصي قريباً",
+  "chatMuted": "تم كتم إشعارات هذه المحادثة",
+  "attachFileTitle": "إرفاق ملف",
+  "photo": "صورة",
+  "video": "فيديو",
+  "file": "ملف",
+  "location": "موقع",
+  "attachImageTitle": "إرفاق صورة",
+  "attachVideoTitle": "إرفاق فيديو",
+  "attachFileActionTitle": "إرفاق ملف",
+  "attachLocationTitle": "إرفاق موقع",
+  "attachImageComingSoon": "سيتم إضافة ميزة إرفاق الصور قريباً",
+  "attachVideoComingSoon": "سيتم إضافة ميزة إرفاق الفيديو قريباً",
+  "attachFileComingSoon": "سيتم إضافة ميزة إرفاق الملفات قريباً",
+  "attachLocationComingSoon": "سيتم إضافة ميزة إرفاق الموقع قريباً",
+  "clearChatTitle": "مسح المحادثة",
+  "clearChatConfirm": "هل أنت متأكد من مسح جميع رسائل هذه المحادثة؟",
+  "clear": "مسح",
+  "clearedTitle": "تم المسح",
+  "chatCleared": "تم مسح جميع رسائل المحادثة",
+  "messageOptions": "خيارات الرسالة",
+  "reply": "رد",
+  "copy": "نسخ",
+  "copiedTitle": "تم النسخ",
+  "messageCopied": "تم نسخ الرسالة",
+  "edit": "تحرير",
+  "editMessageTitle": "تحرير الرسالة",
+  "featureComingSoon": "سيتم إضافة هذه الميزة قريباً",
+  "deletedMessagePlaceholder": "رسالة محذوفة",
+  "deleteMessageTitle": "حذف الرسالة",
+  "deleteMessageConfirm": "هل أنت متأكد من حذف هذه الرسالة؟",
+  "loginSuccessTitle": "نجح تسجيل الدخول",
+  "loginErrorTitle": "خطأ في تسجيل الدخول",
+  "loginErrorMessage": "حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.",
+  "registrationSuccessTitle": "تم إنشاء الحساب بنجاح",
+  "registrationErrorTitle": "خطأ في إنشاء الحساب",
+  "registrationErrorMessage": "حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.",
+  "loggedOutTitle": "تم تسجيل الخروج",
+  "loggedOutMessage": "تم تسجيل خروجك بنجاح",
+  "profileUpdatedTitle": "تم تحديث الملف الشخصي",
+  "changesSavedSuccessfully": "تم حفظ التغييرات بنجاح",
+  "updateErrorTitle": "خطأ في التحديث",
+  "updateProfileErrorMessage": "حدث خطأ أثناء تحديث الملف الشخصي",
+  "guestLoginTitle": "دخول كضيف",
+  "guestWelcomeMessage": "مرحباً بك كضيف في TalkMate AI",
+  "searchHistoryCleared": "تم مسح سجل البحث",
+  "openChatTitle": "فتح المحادثة",
+  "openChatWithName": "فتح محادثة {name}",
+  "@openChatWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "goToMessageTitle": "الانتقال للرسالة",
+  "goToMessageBody": "الانتقال للرسالة: {content}",
+  "@goToMessageBody": {"placeholders": {"content": {"type": "Object"}}},
+  "viewUserTitle": "عرض المستخدم",
+  "viewUserProfileWithName": "عرض ملف {name}",
+  "@viewUserProfileWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "all": "الكل",
+  "chatsLabel": "المحادثات",
+  "messagesLabel": "الرسائل",
+  "usersLabel": "المستخدمون",
+  "email": "البريد الإلكتروني",
+  "name": "الاسم",
+  "pleaseEnterEmail": "يرجى إدخال البريد الإلكتروني",
+  "invalidEmail": "بريد إلكتروني غير صالح",
+  "pleaseEnterPassword": "يرجى إدخال كلمة المرور",
+  "pleaseEnterName": "يرجى إدخال الاسم",
+  "minChars": "{count} أحرف على الأقل",
+  "@minChars": {"placeholders": {"count": {"type": "int"}}},
+  "searchInAppHint": "ابحث في {appName}...",
+  "@searchInAppHint": {"placeholders": {"appName": {"type": "String"}}},
+  "recentSearches": "عمليات البحث الأخيرة",
+  "clearAll": "مسح الكل",
+  "noSearchHistory": "لا يوجد سجل بحث",
+  "startSearchingToSave": "ابدأ البحث لحفظ استعلاماتك",
+  "searching": "جاري البحث...",
+  "noResults": "لا توجد نتائج",
+  "tryDifferentKeywordsOrType": "جرّب كلمات مختلفة أو غيّر نوع البحث",
+  "now": "الآن",
+  "minutesAbbrev": "{count}د",
+  "@minutesAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "hoursAbbrev": "{count}س",
+  "@hoursAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "daysAbbrev": "{count}ي",
+  "@daysAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "endCall": "إنهاء",
+  "turnCameraOn": "تشغيل الكاميرا",
+  "turnCameraOff": "إيقاف الكاميرا",
+  "mute": "كتم",
+  "unmute": "إلغاء الكتم",
+  "speaker": "السماعة",
+  "addParticipant": "إضافة مشارك",
+  "dialPad": "لوحة المفاتيح",
+  "connecting": "جارٍ الاتصال",
+  "live": "متصل الآن",
+  "ended": "المكالمة منتهية",
+  "missed": "مكالمة فائتة",
+  "rejected": "تم الرفض",
+  "send": "إرسال",
+  "noBlockedUsers": "لا يوجد مستخدمون محظورون",
+  "block": "حظر",
+  "unblock": "إلغاء الحظر",
+  "enterUserIdToBlock": "أدخل معرف المستخدم لحظره (userId)",
+  "authErrorInvalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التحقق والمحاولة مرة أخرى.",
+  "authErrorEmailNotConfirmed": "لم يتم تأكيد بريدك الإلكتروني بعد. يرجى مراجعة صندوق الوارد الخاص بك للحصول على رابط التأكيد.",
+  "authErrorUserAlreadyExists": "يوجد حساب مسجل بهذا البريد الإلكتروني بالفعل. حاول تسجيل الدخول بدلاً من ذلك.",
+  "authErrorTooManyRequests": "محاولات كثيرة جداً. يرجى الانتظار بضع ثوانٍ والمحاولة مرة أخرى.",
+  "authErrorNetwork": "خطأ في الاتصال. يرجى التحقق من اتصال الإنترنت الخاص بك.",
+  "authErrorUnknown": "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى لاحقاً."
+  ,"onboardingTitle1": "أمان فائق وسرعة مذهلة"
+  ,"onboardingDesc1": "نستخدم أحدث تقنيات Supabase لضمان وصول رسائلك فوراً وبأعلى معايير التشفير."
+  ,"onboardingTitle2": "يعمل حتى بدون إنترنت"
+  ,"onboardingDesc2": "نظام مزامنة ذكي يحفظ رسائلك محلياً ويرسلها تلقائياً عند عودة الاتصال."
+  ,"onboardingTitle3": "خصوصيتك أولويتنا"
+  ,"onboardingDesc3": "تحكم كامل في بياناتك وإعدادات ظهورك. محادثاتك ملكك وحدك."
+  ,"getStarted": "ابدأ الآن"
+  ,"onboardingNext": "التالي"
+  ,"onboardingSkip": "تخطي"
+  ,"successMomentTitle": "تهانينا! 🎉"
+  ,"successMomentMessage": "لقد أرسلت أول رسالة لك بنجاح. استمتع بتجربة محادثة فريدة مع TalkMate AI."
+  ,"resumeChatWith": "استئناف المحادثة مع {name}"
+  ,"@resumeChatWith": {"placeholders": {"name": {"type": "String"}}}
+  ,"welcomeToAdvancedMessaging": "مرحباً بك في عالم التواصل المتطور"
+  ,"startFirstChatHint": "ابدأ محادثتك الأولى الآن وجرب سرعة المزامنة والخصوصية التامة."
+  ,"startNewChatAction": "ابدأ دردشة جديدة"
+  ,"accept": "قبول"
+  ,"friendRequests": "طلبات الصداقة"
+  ,"incoming": "الواردة"
+  ,"outgoing": "الصادرة"
+  ,"history": "السجل"
+  ,"noIncomingRequests": "لا توجد طلبات واردة"
+  ,"noOutgoingRequests": "لا توجد طلبات صادرة"
+  ,"noRequestHistory": "لا يوجد سجل للطلبات"
+  ,"editProfile": "تعديل الملف الشخصي"
+  ,"friends": "الأصدقاء"
+  ,"noGroupsYet": "لا توجد مجموعات بعد"
+  ,"createYourFirstGroup": "أنشئ مجموعتك الأولى"
+  ,"bio": "النبذة التعريفية"
+  ,"joinDate": "تاريخ الانضمام"
+  ,"noBio": "لا توجد نبذة حالياً",
+  "member": "عضو",
+  "fullName": "الاسم الكامل",
+  "saveChanges": "حفظ التعديلات",
+  "email": "البريد الإلكتروني",
+  "welcomeBack": "مرحباً بك مجدداً",
+  "loginToContinue": "سجل الدخول للمتابعة",
+  "forgotPassword": "نسيت كلمة المرور؟",
+  "or": "أو",
+  "dontHaveAccount": "ليس لديك حساب؟",
+  "verificationSent": "تم إرسال رابط التحقق. انتظر {seconds} ثانية.",
+  "@verificationSent": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "resendVerification": "إعادة إرسال رابط التحقق",
+  "createAccountHeader": "إنشاء حساب جديد",
+  "joinUs": "انضم إلينا وابدأ المحادثة",
+  "name": "الاسم",
+  "pleaseEnterName": "رجاءً أدخل الاسم",
+  "pleaseEnterEmail": "رجاءً أدخل البريد الإلكتروني",
+  "invalidEmail": "البريد الإلكتروني غير صالح",
+  "pleaseEnterPassword": "رجاءً أدخل كلمة المرور",
+  "minChars": "يجب أن يحتوي على {count} حروف على الأقل",
+  "@minChars": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updateErrorTitle": "خطأ",
+  "statusOnline": "متصل",
+  "statusOffline": "غير متصل",
+  "statusAway": "بعيد",
+  "statusBusy": "مشغول",
+  "msgTypeText": "نص",
+  "msgTypeImage": "صورة",
+  "msgTypeVideo": "فيديو",
+  "msgTypeAudio": "صوت",
+  "msgTypeFile": "ملف",
+  "msgTypeLocation": "موقع",
+  "msgTypeContact": "جهة اتصال",
+  "msgTypeChat": "محادثة",
+  "msgTypeCall": "مكالمة",
+  "msgStatusPending": "جاري الإرسال",
+  "msgStatusSent": "تم الإرسال",
+  "msgStatusDelivered": "تم التسليم",
+  "msgStatusRead": "تم القراءة",
+  "msgStatusFailed": "فشل الإرسال",
+  "messageDeleted": "تم حذف هذه الرسالة",
+  "chatTypeIndividual": "محادثة فردية",
+  "chatTypeGroup": "مجموعة",
+  "chatTypeChannel": "قناة",
+  "chatTypeChat": "محادثة",
+  "noMessages": "لا توجد رسائل",
+  "timeNow": "الآن",
+  "timeMinutes": "{count} دقيقة",
+  "@timeMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeHours": "{count} ساعة",
+  "@timeHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeDays": "{count} يوم",
+  "@timeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeWeeks": "{count} أسبوع",
+  "@timeWeeks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lastSeen": "آخر ظهور",
+  "youDeletedMessage": "أنت حذفت هذه الرسالة",
+  "deletedBy": "حذفها {name}",
+  "@deletedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageLoadError": "فشل تحميل الصورة",
+  "stickerUploadFailed": "فشل رفع الملصق",
+  "stickerUploadError": "فشل رفع الملصق",
+  "minutesAgo": "منذ {minutes} دقيقة",
+  "@minutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "todayAt": "اليوم في {time}",
+  "@todayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "yesterdayAt": "أمس في {time}",
+  "@yesterdayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "dateTimeAt": "{date} في {time}",
+  "@dateTimeAt": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "throttledMessagesCount": "{count} رسائل",
+  "@throttledMessagesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedCountLabel": "تم تحديد {count}",
+  "@selectedCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "typingSingle": "{user} يكتب...",
+  "@typingSingle": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      }
+    }
+  },
+  "typingDouble": "{user1} و {user2} يكتبان...",
+  "@typingDouble": {
+    "placeholders": {
+      "user1": {
+        "type": "String"
+      },
+      "user2": {
+        "type": "String"
+      }
+    }
+  },
+  "typingMultiple": "{count} أشخاص يكتبون...",
+  "@typingMultiple": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reactionsCount": "{count} تفاعلات",
+  "@reactionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deleteMessagesTitle": "حذف {count} رسائل؟",
+  "@deleteMessagesTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "incomingCallFrom": "مكالمة واردة من {name}",
+  "@incomingCallFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "callTypeLabel": "مكالمة {type}",
+  "@callTypeLabel": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "voice": "صوتية",
+  "chooseFriend": "اختر صديقاً",
+  "noFriendsToSelect": "لا يوجد أصدقاء لتحديدهم",
+  "confirm": "تأكيد",
+  "pleaseLoginToViewCalls": "يرجى تسجيل الدخول لعرض المكالمات",
+  "noCallsMatchSearch": "لا توجد مكالمات تطابق بحثك",
+  "searchInHistoryHint": "البحث في سجل المكالمات...",
+  "noCallsYet": "لا توجد مكالمات بعد",
+  "alert": "تنبيه",
+  "profileDataLoadError": "فشل تحميل بيانات الملف الشخصي",
+  "imageSelectionError": "فشل تحديد الصورة",
+  "imageUploadError": "فشل رفع الصورة",
+  "profileUpdated": "تم تحديث الملف الشخصي بنجاح",
+  "stickerUploading": "جاري رفع الملصق...",
+  "starMessagesSuccess": "تم تمييز الرسائل",
+  "unstarMessagesSuccess": "أزيلت النجمة من الرسائل",
+  "callingStatus": "جاري الاتصال...",
+  "disconnectedStatus": "غير متصل",
+  "failedStatus": "فشل",
+  "connectionEnded": "انتهى الاتصال",
+  "permissions": "الأذونات",
+  "mediaPermissionRequest": "مطلوب إذن الوصول للوسائط",
+  "micPermissionDenied": "تم رفض إذن الميكروفون",
+  "cameraPermissionDenied": "تم رفض إذن الكاميرا",
+  "incomingVideoCall": "مكالمة فيديو واردة",
+  "incomingVoiceCall": "مكالمة صوتية واردة",
+  "ringingNow": "جاري الرنين...",
+  "closeTooltip": "إغلاق",
+  "incomingCall": "مكالمة واردة",
+  "unknown": "مجهول",
+  "justNow": "الآن",
+  "chooseFriendToCall": "اختر صديقاً للاتصال",
+  "webRTC": "WebRTC",
+  "recallFailed": "فشل الاتصال",
+  "sendFailedDetail": "فشل إرسال الرسالة",
+  "callFailed": "فشل الاتصال",
+  "imageUploadDetail": "فشل رفع الصورة",
+  "stickerLabel": "ملصق",
+  "removeLabel": "إزالة",
+  "forwardLabel": "توجيه",
+  "openOrDownload": "فتح أو تحميل",
+  "starLabelDetailed": "تمييز بنجمة",
+  "copyLabelDetailed": "نسخ الرسالة",
+  "forwardLabelDetailed": "توجيه الرسالة",
+  "deleteLabelDetailed": "حذف الرسالة",
+  "editedLabel": "معدلة",
+  "saveLabel": "حفظ",
+  "retryLabelDetailed": "إعادة المحاولة",
+  "removeStarLabelDetailed": "إزالة النجمة",
+  "starLabelWithStar": "تمييز",
+  "unpinLabelDetailed": "إلغاء التثبيت",
+  "pinToTopLabelDetailed": "تثبيت في الأعلى",
+  "done": "تم",
+  "messagesForwardedSuccess": "تم توجيه الرسائل",
+  "reactLabelDetailed": "تفاعل",
+  "removeMyReactionLabelDetailed": "إزالة تفاعلي",
+  "deleteForMeLabel": "حذف لدي",
+  "confirmDelete": "تأكيد الحذف",
+  "deleteForMeConfirm": "حذف لدي فقط؟",
+  "select": "تحديد",
+  "deleteForAllLabel": "حذف للجميع",
+  "confirmDeleteForAll": "حذف للجميع",
+  "deleteForAllConfirm": "حذف للجميع؟",
+  "confirmLabel": "تأكيد",
+  "groupRoleAdmin": "مشرف",
+  "groupRoleModerator": "مراقب",
+  "meLabel": "أنا",
+  "otherPersonLabel": "آخر",
+  "warning": "تحذير",
+  "deletedLabel": "محذوفة",
+  "releaseToCancel": "افلت للإلغاء",
+  "swipeToCancel": "اصحب للإلغاء",
+  "sendFailed": "فشل الإرسال",
+  "groupInfoTitle": "معلومات المجموعة",
+  "groupInfoSoon": "معلومات المجموعة قريباً",
+  "audioLabel": "صوت",
+  "mediaPermissionDetail": "مطلوب إذن للوصول إلى الوسائط",
+  "uploadingImage": "جاري رفع الصورة...",
+  "uploadingVideo": "جاري رفع الفيديو...",
+  "uploadingFile": "جاري رفع الملف...",
+  "shareLocation": "مشاركة الموقع",
+  "shareLocationDetail": "مشاركة موقعك الحالي",
+  "myLocationLabel": "موقعي",
+  "editorLabel": "محرر",
+  "messagesCopiedToClipboard": "تم نسخ الرسائل للحافظة",
+  "forwardToTitle": "توجيه إلى",
+  "deleteMessagesConfirm": "حذف الرسائل؟",
+  "openLinkLabel": "فتح الرابط",
+  "openLinkError": "فشل فتح الرابط",
+  "openLinkErrorGeneric": "خطأ في فتح الرابط",
+  "fileLabel": "ملف",
+  "reactionsLabel": "التفاعلات",
+  "userLabel": "مستخدم",
+  "fetchingPreview": "جاري جلب المعاينة...",
+  "replyLabelDetailed": "رد على الرسالة",
+  "webrtcIndividualOnly": "WebRTC للمحادثات الفردية فقط",
+  "webrtcFailedToIdentifyOther": "فشل تحديد الطرف الآخر",
+  "chooseFriendToChat": "اختر صديقاً للمحادثة",
+  "changeProfilePhoto": "تغيير صورة الملف الشخصي",
+  "imageUploadFailed": "فشل تحميل الصورة",
+  "minutes": "{count} دقائق",
+  "@minutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hours": "{count} ساعات",
+  "@hours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "indefinitely": "إلى الأبد",
+  "connectionGlitch": "فقدنا الاتصال للحظة.. سنعود حالاً",
+  "reconnectingQuietly": "جاري استعادة الاتصال بهدوء...",
+  "exitGracefully": "شكراً لاستخدامك TalkMate. ننهي الجلسة بكل ود.",
+  "callEndedPeacefully": "انتهت المكالمة بسلام.",
+  "rooms": "الغرف",
+  "me": "أنا",
+  "friends": "الأصدقاء",
+  "searchFriendsHint": "ابحث بالاسم أو البريد",
+  "noFriendsYet": "لا يوجد أصدقاء بعد",
+  "viewProfile": "عرض الملف الشخصي",
+  "startChat": "بدء محادثة",
+  "removeFromFriends": "إزالة من الأصدقاء",
+  "block": "حظر",
+  "friendRemoved": "تمت إزالة الصديق",
+  "blocked": "تم الحظر",
+  "noResults": "لا توجد نتائج",
+  "doneLabel": "تم",
+  "pleaseLoginToView": "الرجاء تسجيل الدخول",
+  "lastSeen": "آخر ظهور",
+  "profilePhoto": "صورة الملف الشخصي",
+  "status": "الحالة",
+  "outgoingCall": "مكالمة صادرة",
+  "callStatusDialing": "جارٍ الاتصال…",
+  "callStatusRinging": "يرن الآن…",
+  "callStatusConnecting": "جارٍ الاتصال بالطرف الآخر…",
+  "callStatusReconnecting": "جارٍ إعادة الاتصال…",
+  "callStatusConnected": "تم الاتصال",
+  "callStatusFailed": "فشل الاتصال",
+  "networkExcellent": "ممتاز",
+  "networkGood": "جيد",
+  "networkPoor": "ضعيف",
+  "networkUnstable": "غير مستقر",
+  "fallbackToAudioMsg": "تم التحويل لمكالمة صوتية لضمان الاستقرار"
+}

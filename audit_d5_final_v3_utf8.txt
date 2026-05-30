@@ -1,0 +1,4 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Sort directive sections alphabetically - lib\core\bootstrapper.dart:23:1 - directives_ordering
+

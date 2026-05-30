@@ -1,0 +1,6 @@
+﻿Analyzing talkmate_ai...                                        
+
+  error - Undefined name '_onItemTapped' - lib\screens\main_tab_screen.dart:53:20 - undefined_identifier
+warning - Unused import: 'package:flutter/material.dart' - lib\services\observability\app_observability.dart:2:8 - unused_import
+   info - Sort directive sections alphabetically - lib\services\observability\app_observability.dart:6:1 - directives_ordering
+

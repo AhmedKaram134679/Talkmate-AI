@@ -1,0 +1,9 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Place 'package:' imports before relative imports - lib\core\app_brain\assimilation\feature_gatekeeper.dart:6:1 - directives_ordering
+   info - Place 'package:' imports before relative imports - lib\core\app_brain\assimilation\feature_gatekeeper.dart:7:1 - directives_ordering
+   info - Sort directive sections alphabetically - lib\core\bootstrapper.dart:36:1 - directives_ordering
+   info - Sort directive sections alphabetically - lib\core\bootstrapper.dart:37:1 - directives_ordering
+warning - Unused import: 'package:talkmate_ai/core/release/feature_flag_provider.dart' - lib\core\bootstrapper.dart:37:8 - unused_import
+   info - Sort directive sections alphabetically - lib\core\release\release_manager.dart:3:1 - directives_ordering
+

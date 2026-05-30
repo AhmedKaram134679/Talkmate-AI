@@ -1,0 +1,90 @@
+﻿Analyzing talkmate_ai...                                        
+
+warning - Unused import: 'package:connectivity_plus/connectivity_plus.dart' - lib\controllers\chat_controller.dart:4:8 - unused_import
+   info - Sort directive sections alphabetically - lib\controllers\chat_controller.dart:14:1 - directives_ordering
+warning - The operand can't be 'null', so the condition is always 'true' - lib\controllers\chat_controller.dart:1947:20 - unnecessary_null_comparison
+warning - Duplicate import - lib\controllers\language_controller.dart:3:8 - duplicate_import
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\controllers\language_controller.dart:87:11 - unawaited_futures
+warning - Unnecessary cast - lib\core\app_brain\assimilation\feature_assimilation_layer.dart:220:10 - unnecessary_cast
+   info - Method invocation or property access on a 'dynamic' target - lib\core\app_brain\self_awareness\memory\decision_memory_store.dart:19:28 - avoid_dynamic_calls
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\core\app_brain\self_reflection\verification\g2_simulation.dart:35:26 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\core\app_brain\self_reflection\verification\g2_simulation.dart:44:26 - unawaited_futures
+   info - Method invocation or property access on a 'dynamic' target - lib\data\repositories\compliance_repository.dart:32:24 - avoid_dynamic_calls
+   info - Unclosed instance of 'Sink' - lib\data\repositories\local\local_message_repository_native.dart:58:11 - close_sinks
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:111:25 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:127:25 - unawaited_futures
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_friendship_repository.dart:38:11 - close_sinks
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_message_repository.dart:26:11 - close_sinks
+   info - Method invocation or property access on a 'dynamic' target - lib\data\repositories\supabase\supabase_friendship_repository.dart:79:11 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\data\repositories\supabase\supabase_friendship_repository.dart:80:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\data\repositories\supabase\supabase_friendship_repository.dart:82:21 - avoid_dynamic_calls
+   info - Sort directive sections alphabetically - lib\data\services\chat_sync_engine.dart:6:1 - directives_ordering
+  error - Undefined class 'StreamSubscription' - lib\data\services\chat_sync_engine.dart:24:3 - undefined_class
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:51:7 - undefined_method
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:52:7 - undefined_method
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:59:5 - undefined_method
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:60:5 - undefined_method
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:70:5 - unawaited_futures
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:104:5 - undefined_method
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:134:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:168:9 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:178:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:193:33 - unawaited_futures
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:230:7 - undefined_method
+  error - The method 'unawaited' isn't defined for the type 'ChatSyncEngine' - lib\data\services\chat_sync_engine.dart:275:9 - undefined_method
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\database_service_native.dart:85:8 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:628:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:636:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:692:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:700:13 - unawaited_futures
+   info - Method invocation or property access on a 'dynamic' target - lib\features\webrtc\controllers\webrtc_call_controller.dart:402:30 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\features\webrtc\controllers\webrtc_call_controller.dart:407:24 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\features\webrtc\controllers\webrtc_call_controller.dart:413:11 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\features\webrtc\controllers\webrtc_call_controller.dart:414:12 - avoid_dynamic_calls
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\features\webrtc\screens\incoming_webrtc_call_screen.dart:175:29 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\auth\login_screen.dart:80:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\calls_screen.dart:354:5 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1513:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1555:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1623:26 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1630:9 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:2544:36 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:151:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:157:13 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:375:13 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:399:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:785:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:827:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:841:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:891:22 - unawaited_futures
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\compliance_dashboard_screen.dart:181:37 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\compliance_dashboard_screen.dart:182:35 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\compliance_dashboard_screen.dart:183:38 - avoid_dynamic_calls
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\create_group_screen.dart:111:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\friends_screen.dart:285:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\onboarding_screen.dart:158:9 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\profile_screen.dart:449:11 - unawaited_futures
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:52:24 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:72:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:72:17 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:99:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:137:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:138:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:139:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:154:25 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:154:26 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:157:25 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:157:26 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:160:25 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:160:26 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:194:14 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_learning_dashboard_screen.dart:199:18 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_smart_notifications_screen.dart:251:20 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\ai_smart_notifications_screen.dart:251:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\widgets\ai_explainability_bottom_sheet.dart:18:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\widgets\ai_explainability_bottom_sheet.dart:65:17 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\widgets\ai_explainability_bottom_sheet.dart:65:46 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\settings\widgets\ai_explainability_bottom_sheet.dart:197:26 - avoid_dynamic_calls
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\services\call\call_manager.dart:242:11 - unawaited_futures
+   info - Method invocation or property access on a 'dynamic' target - lib\widgets\chat\chat_reactions_bar.dart:27:19 - avoid_dynamic_calls
+

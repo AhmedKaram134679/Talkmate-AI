@@ -1,0 +1,709 @@
+{
+  "appName": "TalkMate AI",
+  "search": "Search",
+  "chats": "Chats",
+  "calls": "Calls",
+  "groups": "Groups",
+  "profile": "Profile",
+  "settings": "Settings",
+  "login": "Login",
+  "register": "Register",
+  "continueAsGuest": "Continue as Guest",
+  "logout": "Logout",
+  "welcome": "Welcome to TalkMate AI",
+  "comingSoon": "Coming soon"
+  ,"tooltipChangeTheme": "Change theme"
+  ,"tooltipChangeLanguage": "Change language"
+  ,"snackTestTitle": "Test"
+  ,"snackTestMessage": "Tapped {count} times! 🎉",
+  "@snackTestMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
+  ,"guest": "Guest"
+  ,"appTagline": "Smart chat and calls app"
+  ,"runningOk": "✅ Running successfully!"
+  ,"appStatus": "App status:"
+  ,"platform": "Platform"
+  ,"theme": "Theme"
+  ,"language": "Language"
+  ,"user": "User"
+  ,"loggedIn": "Logged in"
+  ,"clickCount": "Click count"
+  ,"availableFeatures": "Available features:"
+  ,"instantMessaging": "Instant messaging"
+  ,"voiceCalls": "Voice calls"
+  ,"videoCalls": "Video calls"
+  ,"groupsFeature": "Groups"
+  ,"securityPrivacy": "Security and privacy"
+  ,"settingsHeader": "Settings:"
+  ,"deleteMessageTitle": "Delete message"
+  ,"deleteMessageConfirm": "Are you sure you want to delete this message?"
+  ,"cancel": "Cancel"
+  ,"delete": "Delete"
+  ,"profile": "Profile"
+  ,"online": "Online"
+  ,"statusInCall": "In a call"
+  ,"statusInRoomVoice": "In voice room"
+  ,"statusInRoomVideo": "In video room"
+  ,"appearanceLanguage": "Appearance & Language"
+  ,"darkMode": "Dark mode"
+  ,"darkModeHint": "Enable the app's dark theme"
+  ,"arabic": "Arabic"
+  ,"english": "English"
+  ,"notifications": "Notifications"
+  ,"enableNotifications": "Enable notifications"
+  ,"newMessagesNotifications": "Receive new message notifications"
+  ,"notificationSound": "Notification sound"
+  ,"playSoundOnNotifications": "Play sound when notifications arrive"
+  ,"notificationVibration": "Notification vibration"
+  ,"vibrateOnNotifications": "Vibrate the device on notifications"
+  ,"testNotifications": "Test notifications"
+  ,"sendTestNotification": "Send a test notification"
+  ,"privacySecurity": "Privacy & Security"
+  ,"password": "Password"
+  ,"changePassword": "Change password"
+  ,"blockedUsers": "Blocked users"
+  ,"manageBlockedUsers": "Manage blocked list"
+  ,"privacySettings": "Privacy settings"
+  ,"whoCanSeeInfo": "Who can see your info"
+  ,"aboutApp": "About the app"
+  ,"appInfo": "App info"
+  ,"appVersionLabel": "Version {version}"
+  ,"@appVersionLabel": {"placeholders": {"version": {"type": "String"}}}
+  ,"developerLabel": "Developer: {name}"
+  ,"@developerLabel": {"placeholders": {"name": {"type": "String"}}}
+  ,"helpSupport": "Help & support"
+  ,"faqSupport": "FAQs and support"
+  ,"termsOfUse": "Terms of use"
+  ,"readTerms": "Read terms and conditions"
+  ,"privacyPolicy": "Privacy policy"
+  ,"howWeProtectData": "How we protect your data"
+  ,"account": "Account"
+  ,"logoutHint": "Sign out from the current account"
+  ,"deleteAccount": "Delete account"
+  ,"deleteAccountPermanently": "Delete the account permanently"
+  ,"chooseLanguage": "Choose language"
+  ,"ok": "OK"
+  ,"confirmLogout": "Are you sure you want to log out?"
+  ,"confirmDeleteAccount": "Are you sure you want to delete the account? This action cannot be undone."
+  ,"newChat": "New chat"
+  ,"searchChatsHint": "Search chats..."
+  ,"noChatsYet": "No chats yet"
+  ,"startNewChatWithFriends": "Start a new chat with your friends"
+  ,"startNewChat": "Start a new chat"
+  ,"archive": "Archive"
+  ,"unarchive": "Unarchive"
+  ,"mute": "Mute"
+  ,"unmute": "Unmute"
+  ,"pin": "Pin"
+  ,"unpin": "Unpin"
+  ,"newChatTitle": "New chat"
+  ,"chooseChatType": "Choose the type of chat you want to create"
+  ,"individualChat": "Individual chat"
+  ,"group": "Group"
+  ,"createIndividualChat": "Create individual chat"
+  ,"personNameHint": "Person name"
+  ,"create": "Create"
+  ,"createGroup": "Create group"
+  ,"groupNameHint": "Group name"
+  ,"deleteChat": "Delete chat",
+  "deleteChatTitle": "Delete chat",
+  "deleteChatConfirmWithName": "Are you sure you want to delete the chat with {name}?",
+  "confirmDeleteChatWithName": "Delete chat with {name}",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "searchInChatHint": "Search in chat...",
+  "typing": "typing...",
+  "online": "Online",
+  "searchOptions": "Search options",
+  "matchCase": "Match case",
+  "wholeWord": "Whole word",
+  "useRegex": "Use Regex",
+  "previous": "Previous",
+  "next": "Next",
+  "closeSearch": "Close search",
+  "notifications": "Notifications",
+  "notificationsEnabled": "Notifications enabled",
+  "notificationsDisabled": "Notifications disabled",
+  "notificationSound": "Notification sound",
+  "notificationSoundEnabled": "Notification sound enabled",
+  "notificationSoundDisabled": "Notification sound disabled",
+  "notificationVibration": "Notification vibration",
+  "notificationVibrationEnabled": "Notification vibration enabled",
+  "notificationVibrationDisabled": "Notification vibration disabled",
+  "notificationTitle": "Notification",
+  "openChatFromNotificationWithId": "Open chat from notification: {chatId}",
+  "@openChatFromNotificationWithId": {"placeholders": {"chatId": {"type": "Object"}}},
+  "messageTypeImage": "📷 Image",
+  "messageTypeVideo": "🎥 Video",
+  "messageTypeAudio": "🎵 Voice message",
+  "messageTypeFile": "📎 File",
+  "messageTypeLocation": "📍 Location",
+  "messageTypeContact": "👤 Contact",
+  "incomingCallTitleWithType": "Incoming {callType} call",
+  "@incomingCallTitleWithType": {"placeholders": {"callType": {"type": "Object"}}},
+  "fromCallerName": "From {callerName}",
+  "@fromCallerName": {"placeholders": {"callerName": {"type": "Object"}}},
+  "callsChannelName": "TalkMate Calls",
+  "callsChannelDescription": "Incoming call notifications",
+  "answer": "Answer",
+  "decline": "Decline",
+  "testChannelName": "Notifications Test",
+  "testChannelDescription": "Notifications test channel",
+  "notificationsTestTitle": "Notifications Test",
+  "notificationsTestBody": "This is a test notification from TalkMate AI 🚀",
+  "sent": "Sent",
+  "testNotificationSent": "Test notification sent successfully",
+  "error": "Error",
+  "testNotificationFailedWithError": "Failed to send test notification: {error}",
+  "@testNotificationFailedWithError": {"placeholders": {"error": {"type": "Object"}}},
+  "testNotificationDialogTitle": "Test Notification",
+  "testNotificationDialogBody": "Notifications system works properly!",
+  "ok": "OK",
+  "testNotificationShown": "Test notification displayed successfully",
+  "updated": "Updated",
+  "chatsUpdatedSuccessfully": "Chats updated successfully",
+  "updateChatsError": "An error occurred while updating chats",
+  "newChat": "New chat",
+  "chatCreatedWithName": "Chat created with {name}",
+  "@chatCreatedWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "newGroup": "New group",
+  "groupCreatedWithName": "Group {name} created",
+  "@groupCreatedWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "deleted": "Deleted",
+  "chatDeleted": "Chat deleted",
+  "archived": "Archived",
+  "unarchived": "Unarchived",
+  "chatArchived": "Chat archived",
+  "chatUnarchived": "Chat unarchived",
+  "muted": "Muted",
+  "unmuted": "Unmuted",
+  "chatMuted": "Chat notifications muted",
+  "chatUnmuted": "Chat notifications unmuted",
+  "cleared": "Cleared",
+  "allChatMessagesCleared": "All chat messages cleared",
+  "messageDeleted": "Message deleted",
+  "videoCall": "Video call",
+  "voiceCall": "Voice call",
+  "viewProfile": "View profile",
+  "searchInChat": "Search in chat",
+  "muteNotifications": "Mute notifications",
+  "clearChat": "Clear chat",
+  "startConversation": "Start the conversation",
+  "writeFirstMessage": "Write your first message to start the conversation",
+  "chatToday": "Today",
+  "chatYesterday": "Yesterday",
+  "attachFile": "Attach file",
+  "emoji": "Emoji",
+  "typeMessageHint": "Type a message...",
+  "messageSentTitle": "Sent",
+  "messageSentSuccess": "Message sent successfully",
+  "comingSoon": "This feature will be added soon",
+  "profileTitle": "Profile",
+  "profileViewComingSoon": "Profile view will be added soon",
+  "chatMuted": "Notifications for this chat have been muted",
+  "attachFileTitle": "Attach file",
+  "photo": "Photo",
+  "video": "Video",
+  "file": "File",
+  "location": "Location",
+  "attachImageTitle": "Attach photo",
+  "attachVideoTitle": "Attach video",
+  "attachFileActionTitle": "Attach file",
+  "attachLocationTitle": "Attach location",
+  "attachImageComingSoon": "Photo attachment feature will be added soon",
+  "attachVideoComingSoon": "Video attachment feature will be added soon",
+  "attachFileComingSoon": "File attachment feature will be added soon",
+  "attachLocationComingSoon": "Location attachment feature will be added soon",
+  "clearChatTitle": "Clear chat",
+  "clearChatConfirm": "Are you sure you want to clear all messages in this chat?",
+  "clear": "Clear",
+  "clearedTitle": "Cleared",
+  "chatCleared": "All chat messages have been cleared",
+  "messageOptions": "Message options",
+  "reply": "Reply",
+  "copy": "Copy",
+  "copiedTitle": "Copied",
+  "messageCopied": "Message copied",
+  "edit": "Edit",
+  "editMessageTitle": "Edit message",
+  "featureComingSoon": "This feature will be added soon",
+  "deletedMessagePlaceholder": "Deleted message",
+  "deleteMessageTitle": "Delete message",
+  "deleteMessageConfirm": "Are you sure you want to delete this message?",
+  "loginSuccessTitle": "Login successful",
+  "loginErrorTitle": "Login error",
+  "loginErrorMessage": "An error occurred during login. Please try again.",
+  "registrationSuccessTitle": "Account created successfully",
+  "registrationErrorTitle": "Registration error",
+  "registrationErrorMessage": "An error occurred during registration. Please try again.",
+  "loggedOutTitle": "Logged out",
+  "loggedOutMessage": "You have been logged out successfully",
+  "profileUpdatedTitle": "Profile updated",
+  "changesSavedSuccessfully": "Changes saved successfully",
+  "updateErrorTitle": "Update error",
+  "updateProfileErrorMessage": "An error occurred while updating the profile",
+  "guestLoginTitle": "Guest login",
+  "guestWelcomeMessage": "Welcome as a guest to TalkMate AI",
+  "searchHistoryCleared": "Search history cleared",
+  "openChatTitle": "Open chat",
+  "openChatWithName": "Open chat with {name}",
+  "@openChatWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "goToMessageTitle": "Go to message",
+  "goToMessageBody": "Go to message: {content}",
+  "@goToMessageBody": {"placeholders": {"content": {"type": "Object"}}},
+  "viewUserTitle": "View user",
+  "viewUserProfileWithName": "View {name}'s profile",
+  "@viewUserProfileWithName": {"placeholders": {"name": {"type": "Object"}}},
+  "all": "All",
+  "chatsLabel": "Chats",
+  "messagesLabel": "Messages",
+  "usersLabel": "Users",
+  "email": "Email",
+  "name": "Name",
+  "pleaseEnterEmail": "Please enter your email",
+  "invalidEmail": "Invalid email address",
+  "pleaseEnterPassword": "Please enter your password",
+  "pleaseEnterName": "Please enter your name",
+  "minChars": "At least {count} characters",
+  "@minChars": {"placeholders": {"count": {"type": "int"}}},
+  "searchInAppHint": "Search in {appName}...",
+  "@searchInAppHint": {"placeholders": {"appName": {"type": "String"}}},
+  "recentSearches": "Recent searches",
+  "clearAll": "Clear all",
+  "noSearchHistory": "No search history",
+  "startSearchingToSave": "Start searching to save your queries",
+  "searching": "Searching...",
+  "noResults": "No results",
+  "tryDifferentKeywordsOrType": "Try different keywords or change the search type",
+  "now": "Now",
+  "minutesAbbrev": "{count}m",
+  "@minutesAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "hoursAbbrev": "{count}h",
+  "@hoursAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "daysAbbrev": "{count}d",
+  "@daysAbbrev": {"placeholders": {"count": {"type": "int"}}},
+  "endCall": "End",
+  "turnCameraOn": "Turn camera on",
+  "turnCameraOff": "Turn camera off",
+  "speaker": "Speaker",
+  "addParticipant": "Add participant",
+  "dialPad": "Dial pad",
+  "connecting": "Connecting",
+  "live": "Live",
+  "ended": "Ended",
+  "missed": "Missed call",
+  "rejected": "Rejected",
+  "send": "Send",
+  "noBlockedUsers": "No blocked users",
+  "block": "Block",
+  "unblock": "Unblock",
+  "enterUserIdToBlock": "Enter userId to block",
+  "flipCamera": "Flip camera",
+  "shareScreen": "Share screen",
+  "authErrorInvalidCredentials": "Invalid email or password. Please check your credentials and try again.",
+  "authErrorEmailNotConfirmed": "Your email is not confirmed yet. Please check your inbox for the confirmation link.",
+  "authErrorUserAlreadyExists": "An account with this email already exists. Try logging in instead.",
+  "authErrorTooManyRequests": "Too many attempts. Please wait a few seconds and try again.",
+  "authErrorNetwork": "Network error. Please check your internet connection.",
+  "authErrorUnknown": "An unexpected error occurred. Please try again later.",
+  "onboardingTitle1": "Ultra Secure & Fast",
+  "onboardingDesc1": "We use the latest Supabase tech to ensure your messages arrive instantly with top-tier encryption.",
+  "onboardingTitle2": "Works Even Offline",
+  "onboardingDesc2": "Smart sync system saves messages locally and sends them automatically when connection returns.",
+  "onboardingTitle3": "Your Privacy is Our Priority",
+  "onboardingDesc3": "Full control over your data and visibility settings. Your chats belong to you only.",
+  "getStarted": "Get Started",
+  "onboardingNext": "Next",
+  "onboardingSkip": "Skip",
+  "successMomentTitle": "Congratulations! 🎉",
+  "successMomentMessage": "You successfully sent your first message. Enjoy a unique chat experience with TalkMate AI.",
+  "resumeChatWith": "Resume chat with {name}",
+  "@resumeChatWith": {"placeholders": {"name": {"type": "String"}}},
+  "welcomeToAdvancedMessaging": "Welcome to Advanced Messaging",
+  "startFirstChatHint": "Start your first chat now and experience instant sync and privacy.",
+  "startNewChatAction": "Start New Chat",
+  "accept": "Accept",
+  "friendRequests": "Friend Requests",
+  "incoming": "Incoming",
+  "outgoing": "Outgoing",
+  "history": "History",
+  "noIncomingRequests": "No incoming requests",
+  "noOutgoingRequests": "No outgoing requests",
+  "noRequestHistory": "No request history",
+  "editProfile": "Edit Profile",
+  "friends": "Friends",
+  "noGroupsYet": "No groups yet",
+  "createYourFirstGroup": "Create your first group",
+  "bio": "Bio",
+  "joinDate": "Join Date",
+  "noBio": "No bio yet",
+  "member": "Member",
+  "fullName": "Full Name",
+  "saveChanges": "Save Changes",
+  "email": "Email",
+  "welcomeBack": "Welcome back",
+  "loginToContinue": "Login to continue",
+  "forgotPassword": "Forgot password?",
+  "or": "Or",
+  "dontHaveAccount": "Don't have an account?",
+  "verificationSent": "Verification link sent. Wait {seconds}s.",
+  "@verificationSent": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "resendVerification": "Resend verification link",
+  "createAccountHeader": "Create new account",
+  "joinUs": "Join us and start chatting",
+  "name": "Name",
+  "pleaseEnterName": "Please enter your name",
+  "pleaseEnterEmail": "Please enter your email",
+  "invalidEmail": "Invalid email address",
+  "pleaseEnterPassword": "Please enter password",
+  "minChars": "At least {count} characters required",
+  "@minChars": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updateErrorTitle": "Error",
+  "statusOnline": "Online",
+  "statusOffline": "Offline",
+  "statusAway": "Away",
+  "statusBusy": "Busy",
+  "msgTypeText": "Text",
+  "msgTypeImage": "Image",
+  "msgTypeVideo": "Video",
+  "msgTypeAudio": "Audio",
+  "msgTypeFile": "File",
+  "msgTypeLocation": "Location",
+  "msgTypeContact": "Contact",
+  "msgTypeChat": "Chat",
+  "msgTypeCall": "Call",
+  "msgStatusPending": "Sending...",
+  "msgStatusSent": "Sent",
+  "msgStatusDelivered": "Delivered",
+  "msgStatusRead": "Read",
+  "msgStatusFailed": "Failed",
+  "messageDeleted": "This message was deleted",
+  "chatTypeIndividual": "Individual Chat",
+  "chatTypeGroup": "Group",
+  "chatTypeChannel": "Channel",
+  "chatTypeChat": "Chat",
+  "noMessages": "No messages",
+  "timeNow": "Now",
+  "timeMinutes": "{count} min",
+  "@timeMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeHours": "{count} h",
+  "@timeHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeDays": "{count} d",
+  "@timeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeWeeks": "{count} w",
+  "@timeWeeks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "youDeletedMessage": "You deleted this message",
+  "deletedBy": "Deleted by {name}",
+  "@deletedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageLoadError": "Failed to load image",
+  "stickerUploadFailed": "Sticker upload failed",
+  "stickerUploadError": "Failed to upload sticker",
+  "lastSeen": "Last seen",
+  "minutesAgo": "{minutes} min ago",
+  "@minutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "todayAt": "Today at {time}",
+  "@todayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "yesterdayAt": "Yesterday at {time}",
+  "@yesterdayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "dateTimeAt": "{date} at {time}",
+  "@dateTimeAt": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "throttledMessagesCount": "{count} messages",
+  "@throttledMessagesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedCountLabel": "{count} selected",
+  "@selectedCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "typingSingle": "{user} is typing...",
+  "@typingSingle": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      }
+    }
+  },
+  "typingDouble": "{user1} and {user2} are typing...",
+  "@typingDouble": {
+    "placeholders": {
+      "user1": {
+        "type": "String"
+      },
+      "user2": {
+        "type": "String"
+      }
+    }
+  },
+  "typingMultiple": "{count} people are typing...",
+  "@typingMultiple": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reactionsCount": "{count} reactions",
+  "@reactionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deleteMessagesTitle": "Delete {count} messages?",
+  "@deleteMessagesTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "incomingCallFrom": "Incoming call from {name}",
+  "@incomingCallFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "callTypeLabel": "{type} Call",
+  "@callTypeLabel": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "voice": "Voice",
+  "chooseFriend": "Choose Friend",
+  "noFriendsToSelect": "No friends to select",
+  "confirm": "Confirm",
+  "pleaseLoginToViewCalls": "Please login to view calls",
+  "noCallsMatchSearch": "No calls match your search",
+  "searchInHistoryHint": "Search call history...",
+  "noCallsYet": "No calls yet",
+  "alert": "Alert",
+  "profileDataLoadError": "Failed to load profile data",
+  "imageSelectionError": "Image selection failed",
+  "imageUploadError": "Image upload failed",
+  "profileUpdated": "Profile updated successfully",
+  "stickerUploading": "Uploading sticker...",
+  "starMessagesSuccess": "Messages starred",
+  "unstarMessagesSuccess": "Messages unstarred",
+  "callingStatus": "Calling...",
+  "disconnectedStatus": "Disconnected",
+  "failedStatus": "Failed",
+  "connectionEnded": "Connection ended",
+  "permissions": "Permissions",
+  "mediaPermissionRequest": "Media access required",
+  "micPermissionDenied": "Microphone permission denied",
+  "cameraPermissionDenied": "Camera permission denied",
+  "incomingVideoCall": "Incoming Video Call",
+  "incomingVoiceCall": "Incoming Voice Call",
+  "ringingNow": "Ringing...",
+  "closeTooltip": "Close",
+  "incomingCall": "Incoming Call",
+  "unknown": "Unknown",
+  "justNow": "Just now",
+  "chooseFriendToCall": "Choose friend to call",
+  "webRTC": "WebRTC",
+  "recallFailed": "Call failed",
+  "sendFailedDetail": "Failed to send message",
+  "callFailed": "Call failed",
+  "imageUploadDetail": "Failed to upload image",
+  "stickerLabel": "Sticker",
+  "removeLabel": "Remove",
+  "forwardLabel": "Forward",
+  "openOrDownload": "Open or Download",
+  "starLabelDetailed": "Star message",
+  "copyLabelDetailed": "Copy message",
+  "forwardLabelDetailed": "Forward message",
+  "deleteLabelDetailed": "Delete message",
+  "editedLabel": "Edited",
+  "saveLabel": "Save",
+  "retryLabelDetailed": "Retry sending",
+  "removeStarLabelDetailed": "Unstar message",
+  "starLabelWithStar": "Star",
+  "unpinLabelDetailed": "Unpin message",
+  "pinToTopLabelDetailed": "Pin to top",
+  "done": "Done",
+  "messagesForwardedSuccess": "Messages forwarded",
+  "reactLabelDetailed": "React to message",
+  "removeMyReactionLabelDetailed": "Remove reaction",
+  "deleteForMeLabel": "Delete for me",
+  "confirmDelete": "Confirm delete",
+  "deleteForMeConfirm": "Delete for me?",
+  "select": "Select",
+  "deleteForAllLabel": "Delete for everyone",
+  "confirmDeleteForAll": "Delete for everyone",
+  "deleteForAllConfirm": "Delete for everyone?",
+  "confirmLabel": "Confirm",
+  "groupRoleAdmin": "Admin",
+  "groupRoleModerator": "Moderator",
+  "meLabel": "Me",
+  "otherPersonLabel": "Other",
+  "warning": "Warning",
+  "deletedLabel": "Deleted",
+  "releaseToCancel": "Release to cancel",
+  "swipeToCancel": "Swipe to cancel",
+  "sendFailed": "Send failed",
+  "groupInfoTitle": "Group Info",
+  "groupInfoSoon": "Group info coming soon",
+  "audioLabel": "Audio",
+  "mediaPermissionDetail": "Permission required to access media",
+  "uploadingImage": "Uploading image...",
+  "uploadingVideo": "Uploading video...",
+  "uploadingFile": "Uploading file...",
+  "shareLocation": "Share Location",
+  "shareLocationDetail": "Share your current location",
+  "myLocationLabel": "My Location",
+  "editorLabel": "Editor",
+  "messagesCopiedToClipboard": "Messages copied to clipboard",
+  "forwardToTitle": "Forward to",
+  "deleteMessagesConfirm": "Delete messages?",
+  "openLinkLabel": "Open Link",
+  "openLinkError": "Failed to open link",
+  "openLinkErrorGeneric": "Error opening link",
+  "fileLabel": "File",
+  "reactionsLabel": "Reactions",
+  "userLabel": "User",
+  "fetchingPreview": "Fetching preview...",
+  "replyLabelDetailed": "Reply to message",
+  "webrtcIndividualOnly": "WebRTC is for individual chats only",
+  "webrtcFailedToIdentifyOther": "Failed to identify other user",
+  "chooseFriendToChat": "Choose friend to chat",
+  "changeProfilePhoto": "Change Profile Photo",
+  "imageUploadFailed": "Image upload failed",
+  "minutes": "{count} minutes",
+  "@minutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hours": "{count} hours",
+  "@hours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "indefinitely": "Indefinitely",
+  "connectionGlitch": "A minor glitch in the connection. Stay with us...",
+  "reconnectingQuietly": "Reconnecting quietly...",
+  "exitGracefully": "Ending the session. Thank you for using TalkMate.",
+  "callEndedPeacefully": "The call has concluded peacefully.",
+  "rooms": "Rooms",
+  "me": "Me",
+  "friends": "Friends",
+  "searchFriendsHint": "Search by name or email",
+  "noFriendsYet": "No friends yet",
+  "viewProfile": "View Profile",
+  "startChat": "Start Chat",
+  "removeFromFriends": "Remove from Friends",
+  "block": "Block",
+  "friendRemoved": "Friend removed",
+  "blocked": "Blocked",
+  "noResults": "No results",
+  "doneLabel": "Done",
+  "pleaseLoginToView": "Please login to view",
+  "lastSeen": "Last seen",
+  "profilePhoto": "Profile photo",
+  "status": "Status",
+  "outgoingCall": "Outgoing Call",
+  "callStatusDialing": "Dialing...",
+  "callStatusRinging": "Ringing...",
+  "callStatusConnecting": "Connecting to other party...",
+  "callStatusReconnecting": "Reconnecting...",
+  "callStatusConnected": "Connected",
+  "callStatusFailed": "Call Failed",
+  "networkExcellent": "Excellent",
+  "networkGood": "Good",
+  "networkPoor": "Poor",
+  "networkUnstable": "Unstable",
+  "fallbackToAudioMsg": "Switched to audio call for stability"
+}
