@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -52,13 +53,11 @@ class ThemeConfig {
     scaffoldBackgroundColor: lightBackgroundColor,
 
     // Smooth Page Transitions
-    // NOTE: not const because CupertinoPageTransitionsBuilder() is no longer a
-    // const constructor in current Flutter, which made the const map invalid.
-    pageTransitionsTheme: PageTransitionsTheme(
+    pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
-        TargetPlatform.android: const ZoomPageTransitionsBuilder(),
-        TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-        TargetPlatform.windows: const ZoomPageTransitionsBuilder(),
+        TargetPlatform.android: ZoomPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: ZoomPageTransitionsBuilder(),
       },
     ),
 
@@ -180,13 +179,11 @@ class ThemeConfig {
 
     scaffoldBackgroundColor: darkBackgroundColor,
 
-    // NOTE: not const because CupertinoPageTransitionsBuilder() is no longer a
-    // const constructor in current Flutter, which made the const map invalid.
-    pageTransitionsTheme: PageTransitionsTheme(
+    pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
-        TargetPlatform.android: const ZoomPageTransitionsBuilder(),
-        TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-        TargetPlatform.windows: const ZoomPageTransitionsBuilder(),
+        TargetPlatform.android: ZoomPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: ZoomPageTransitionsBuilder(),
       },
     ),
 
