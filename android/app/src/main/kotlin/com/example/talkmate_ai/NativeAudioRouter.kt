@@ -17,12 +17,18 @@ class NativeAudioRouter(private val context: Context) {
 
     fun startCommunication() {
         try {
-            // [STEP 1]: Professional Audio Routing
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            // [REPAIR P3]: Single audio owner = flutter_webrtc.
+            // The audio MODE (MODE_IN_COMMUNICATION) and audio focus are now owned
+            // exclusively by flutter_webrtc's setAndroidAudioConfiguration
+            // (manageAudioFocus = true). We intentionally DO NOT set
+            // audioManager.mode here anymore to stop the previous three-way mode/
+            // focus fight (audio_session + flutter_webrtc + native) that tore down
+            // mic capture mid-call. We only keep the harmless hardware routing:
+            // ensure the global mic is not hard-muted and default to speaker.
             audioManager.isMicrophoneMute = false
             audioManager.isSpeakerphoneOn = true
-            
-            Log.d(TAG, "🔊 Mode set to IN_COMMUNICATION, Speakerphone ON, Mic UNMUTED")
+
+            Log.d(TAG, "🔊 Native routing only: Speakerphone ON, Mic UNMUTED (mode/focus owned by flutter_webrtc)")
         } catch (e: Exception) {
             Log.e(TAG, "⚠️ Router Error: ${e.message}")
         }

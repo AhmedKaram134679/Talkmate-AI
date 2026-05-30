@@ -137,6 +137,11 @@ class CommunicationController extends GetxController
 
   final List<String> _signalingHistory = []; // [R31][SIGNALING_TRACE]
   final Map<String, Timer> _connectingWatchdogs = {}; // [R31]
+  // [REPAIR P7]: The R30 8s fast-recovery watchdog used to be fire-and-forget,
+  // so it fired even after the call ended or the peer was replaced, triggering
+  // spurious ICE restarts (restart loops). We now track it per-peer and cancel
+  // it on re-init and teardown, exactly like the 15s connecting watchdog.
+  final Map<String, Timer> _fastRecoveryWatchdogs = {};
 
   final Map<String, int> _sessionVersions =
       {}; // [Area 6]: Call-scoped versioning
@@ -909,6 +914,17 @@ class CommunicationController extends GetxController
       _iceFailureTimer?.cancel();
       _talkingTimer?.cancel();
       _adaptiveEchoTimer?.cancel();
+      // [REPAIR P7]: Cancel & clear ALL per-peer watchdogs so neither the 15s
+      // connecting watchdog nor the 8s fast-recovery watchdog can fire after the
+      // call has ended (which previously caused spurious ICE restarts / resets).
+      for (final t in _connectingWatchdogs.values) {
+        t.cancel();
+      }
+      _connectingWatchdogs.clear();
+      for (final t in _fastRecoveryWatchdogs.values) {
+        t.cancel();
+      }
+      _fastRecoveryWatchdogs.clear();
 
       unawaited(AppAudioService.instance.stop('call_ringtone.mp3'));
       unawaited(AppAudioService.instance.stop('call_incomming.mp3'));
@@ -1893,20 +1909,18 @@ class CommunicationController extends GetxController
       try {
         final hasAudio = localStream?.getAudioTracks().isNotEmpty ?? false;
 
-        // [WINDOWS_STABILITY]: If we already have audio, only request video
-        // to prevent hardware driver locks/crashes.
-        if (hasAudio && GetPlatform.isWindows) {
+        // [REPAIR P5]: Request VIDEO ONLY on ALL platforms when audio already
+        // exists. The manager merges the new video track into the EXISTING
+        // localStream and keeps the existing audio track (and therefore the
+        // peer's audio sender) intact, so mute/unmute keeps working and no
+        // duplicate audio transceiver is created. Previously the mobile branch
+        // re-initialised audio+video and replaced localStream, which orphaned
+        // the old audio track, desynced mute, and could duplicate audio m-lines.
+        if (hasAudio) {
           addLog(
-              '🎥 [WINDOWS] Requesting VIDEO ONLY to preserve existing audio...');
-          final videoStream =
+              '🎥 [UPGRADE] Requesting VIDEO ONLY (preserve existing audio)...');
+          localStream =
               await _webrtc.initLocalMedia(isAudio: false, isVideo: true);
-          localStream = videoStream;
-        } else if (hasAudio) {
-          addLog('🎥 [UPGRADE] Adding video to existing audio stream...');
-          // On mobile, we usually re-init both for consistent synchronization
-          final upgradedStream =
-              await _webrtc.initLocalMedia(isAudio: true, isVideo: true);
-          localStream = upgradedStream;
         } else {
           await _initMedia(true);
         }
@@ -1923,8 +1937,11 @@ class CommunicationController extends GetxController
           addLog('🎥 [UPGRADE] Video proxy attached (Audio Isolated)');
         }
 
-        // [RADICAL FIX]: Re-inject all tracks (especially new video) into peers
-        await _webrtc.addLocalTracksToPeers();
+        // [REPAIR P5]: Attach the new video track to peers using replaceTrack
+        // when a video sender already exists, otherwise add a single SendRecv
+        // video transceiver. This never touches the audio sender (mute stays in
+        // sync) and avoids duplicate video m-lines from add/remove churn.
+        await _webrtc.upgradeVideoForPeers();
 
         // Renegotiate with all peers to announce the new video stream
         for (var p in participants) {
@@ -1959,13 +1976,106 @@ class CommunicationController extends GetxController
       return;
     }
     final pc = _webrtc.getPeer(userId);
+    final sovereign = _webrtc.getSovereign(userId);
     if (pc == null) return;
+
+    // [REPAIR P4]: Only create a renegotiation offer from a stable state.
+    // Creating an offer while we are mid-negotiation (have-local/have-remote)
+    // throws and silently drops the camera upgrade. If not stable yet, retry
+    // once shortly instead of dropping it.
+    if (pc.signalingState !=
+        webrtc.RTCSignalingState.RTCSignalingStateStable) {
+      addLog(
+          '⏳ [P4] Renegotiate deferred (state=${pc.signalingState?.name}). Retrying in 600ms...');
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!isClosed && _webrtc.getPeer(userId) != null) _renegotiate(userId);
+      });
+      return;
+    }
+
     try {
+      // [REPAIR P4]: Set makingOffer so the remote side's perfect-negotiation
+      // glare detection works for renegotiation (it previously never did).
+      if (sovereign != null) sovereign.makingOffer = true;
       final offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      _sendSignal(receiverId: userId, type: 'offer', data: {'sdp': offer.sdp});
+      _sendSignal(
+        receiverId: userId,
+        type: 'offer',
+        data: {'sdp': offer.sdp, 'cid': _currentNegotiationId},
+      );
+      addLog('📡 [P4] Renegotiation offer sent -> $userId');
     } catch (e) {
       debugPrint('❌ Renegotiation failed for $userId: $e');
+    } finally {
+      if (sovereign != null) sovereign.makingOffer = false;
+    }
+  }
+
+  /// [REPAIR P4]: Apply a mid-call renegotiation offer on an EXISTING peer.
+  ///
+  /// This is the path that was missing. Previously a renegotiation offer was
+  /// either ignored (initiator side) or funnelled into `_initPeer()` which
+  /// early-returns when a peer already exists, so the offer was never applied
+  /// and no answer was ever produced. As a result a camera turned on mid-call
+  /// never reached the remote. This handler works for BOTH initiator and callee.
+  Future<void> _handleRenegotiationOffer(String senderId, String sdp) async {
+    final signalKey = '${sessionId.value}_reneg_offer_${sdp.hashCode}';
+    if (_processedSignals.contains(signalKey)) {
+      addLog('♻️ [P4] Renegotiation offer already processed.');
+      return;
+    }
+
+    final pc = _webrtc.getPeer(senderId);
+    final sovereign = _webrtc.getSovereign(senderId);
+    if (pc == null || sovereign == null) {
+      addLog('⚠️ [P4] Renegotiation offer ignored: no existing peer.');
+      return;
+    }
+
+    // [Perfect Negotiation] Glare handling for simultaneous renegotiation
+    // (e.g. both peers enable the camera at the same time).
+    final collision = sovereign.makingOffer ||
+        pc.signalingState !=
+            webrtc.RTCSignalingState.RTCSignalingStateStable;
+    if (collision) {
+      if (!isPolite) {
+        addLog(
+            '🛡️ [P4] Glare: impolite peer ignoring renegotiation offer (will keep own offer).');
+        return;
+      }
+      // Polite peer yields: rollback our local offer, then accept theirs.
+      try {
+        await pc.setLocalDescription(
+            webrtc.RTCSessionDescription(null, 'rollback'));
+        addLog('✅ [P4] Glare: polite rollback before applying remote offer.');
+      } catch (e) {
+        addLog('⚠️ [P4] Glare rollback failed/unsupported: $e');
+      }
+    }
+
+    try {
+      sovereign.isSettingRemoteAnswerPending = false;
+      await pc.setRemoteDescription(
+          webrtc.RTCSessionDescription(sdp, 'offer'));
+      addLog('📄 [P4] Renegotiation REMOTE_SDP_SET (offer).');
+
+      final answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      _sendSignal(
+        receiverId: senderId,
+        type: 'answer',
+        data: {'sdp': answer.sdp, 'cid': _currentNegotiationId},
+      );
+      addLog('📡 [P4] Renegotiation answer sent -> $senderId.');
+
+      _processedSignals.add(signalKey);
+
+      // Drain any candidates that arrived while remote desc was missing.
+      await _webrtc.drainCandidates(senderId);
+    } catch (e) {
+      addLog('❌ [P4] Failed to apply renegotiation offer: $e');
     }
   }
 
@@ -2125,6 +2235,23 @@ class CommunicationController extends GetxController
       // [Constitutional] Call signaling is now handled via DB Stream.
       // We explicitly ignore these here to avoid double-processing.
       case 'offer':
+        {
+          // [REPAIR P4]: Mid-call renegotiation (e.g. camera enabled during a
+          // call). When a peer already exists and the initial handshake is done,
+          // BOTH the initiator and the callee must apply the new offer on the
+          // existing peer. The old code only ran for `!isInitiator` and routed
+          // through `_initPeer()`, which early-returns when a peer already
+          // exists, so renegotiation offers were never applied and the remote
+          // never received the newly added video/audio.
+          final reSdp = data['sdp']?.toString() ?? '';
+          final existingPeer = _webrtc.getPeer(senderId);
+          if (reSdp.isNotEmpty &&
+              existingPeer != null &&
+              !_isInitialCallSetup) {
+            await _handleRenegotiationOffer(senderId, reSdp);
+            break;
+          }
+        }
         if (!isInitiator) {
           final sdp = data['sdp']?.toString() ?? '';
           if (sdp.isEmpty) return;
@@ -2380,7 +2507,11 @@ class CommunicationController extends GetxController
     // [R33] Jitter Fix: Add ±250ms random jitter
     // [R34] Stability: Increase to 8s to allow for TURN/DTLS stabilization
     final jitter = (DateTime.now().millisecondsSinceEpoch % 500) - 250;
-    Timer(Duration(milliseconds: 8000 + jitter), () {
+    // [REPAIR P7]: Track & replace the fast-recovery watchdog so it is cancelled
+    // on teardown / re-init instead of firing on a stale or replaced peer.
+    _fastRecoveryWatchdogs[userId]?.cancel();
+    _fastRecoveryWatchdogs[userId] =
+        Timer(Duration(milliseconds: 8000 + jitter), () {
       final peer = _webrtc.getPeer(userId);
       if (peer != null &&
           peer.connectionState !=
@@ -2849,8 +2980,16 @@ class CommunicationController extends GetxController
     }
 
     // 1.1 Audio Session Configuration (Constitutional Clause 2)
-    if (GetPlatform.isWeb) {
-      debugPrint('🎙️ Sovereign: Audio Session Bypass active for Web');
+    if (GetPlatform.isWeb || GetPlatform.isAndroid) {
+      // [REPAIR P3]: On Android the audio focus + mode are owned exclusively by
+      // flutter_webrtc (setAndroidAudioConfiguration with manageAudioFocus=true,
+      // applied in setToCommunicationMode()). We must NOT also activate the
+      // audio_session plugin here, because its independent focus request
+      // (gainTransient) fought flutter_webrtc's focus (gain) and caused focus
+      // thrashing that dropped microphone capture mid-call. audio_session is
+      // still used for iOS/macOS below. Web keeps its existing bypass.
+      debugPrint(
+          '🎙️ Sovereign: Audio Session Bypass (focus owned by ${GetPlatform.isWeb ? 'Web/browser' : 'flutter_webrtc on Android'})');
       _isAudioSessionReady.value = true;
       _markCallAsActiveIfReady();
     } else {
@@ -4100,6 +4239,7 @@ class CommunicationController extends GetxController
           _transitionToState(WebRTCLifecycle.active,
               source: 'media_flow_verified');
           _connectingWatchdogs[userId]?.cancel(); // [R31] Stop watchdog
+          _fastRecoveryWatchdogs[userId]?.cancel(); // [REPAIR P7] Stop fast-recovery
           _markCallAsActiveIfReady();
         }
         return;

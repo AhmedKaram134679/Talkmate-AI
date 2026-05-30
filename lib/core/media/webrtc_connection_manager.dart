@@ -501,12 +501,13 @@ class WebRTCConnectionManager {
 
   Map<String, dynamic> get iceConfig => _iceConfig;
 
+  // [REPAIR P2]: Legacy OfferToReceiveAudio/OfferToReceiveVideo removed.
+  // Under Unified Plan, media directions are controlled exclusively by the
+  // explicit SendRecv transceivers created in initPeerConnection(). Keeping the
+  // legacy receive flags here caused libwebrtc to synthesize extra recvonly
+  // m-lines on top of the transceivers (duplicate/contradictory audio sections).
   final Map<String, dynamic> _constraints = {
-    'mandatory': {
-      'OfferToReceiveAudio': true,
-      'OfferToReceiveVideo':
-          false, // [R32.3]: Default to false, enabled dynamically
-    },
+    'mandatory': {},
     'optional': [],
     'sdpSemantics': 'unified-plan', // Ensure modern WebRTC behavior
   };
@@ -551,8 +552,9 @@ class WebRTCConnectionManager {
       return _peers[remoteUserId]!;
     }
 
+    // [REPAIR P2]: No longer inject OfferToReceiveVideo. Receive direction is
+    // guaranteed by the SendRecv transceivers added below.
     final customConstraints = Map<String, dynamic>.from(_constraints);
-    customConstraints['mandatory']['OfferToReceiveVideo'] = isVideo;
 
     final pc = await webrtc.createPeerConnection(_iceConfig, customConstraints);
     final peer = SovereignPeer(pc, remoteUserId);
@@ -582,12 +584,15 @@ class WebRTCConnectionManager {
         }
       }
     } else if (!GetPlatform.isWindows && localStream != null) {
-      // Legacy Android path (kept for non-Windows)
+      // [REPAIR P1]: Android/non-Windows path now uses SendRecv (was SendOnly).
+      // SendOnly made Android declare sendonly m-lines, so the peer answered
+      // recvonly and the reverse media direction was never negotiated, causing
+      // one-way audio/video on Android<->Android and Android<->Windows.
       for (var track in localStream!.getTracks()) {
         await peer.addTransceiver(
           track: track,
           init: webrtc.RTCRtpTransceiverInit(
-            direction: webrtc.TransceiverDirection.SendOnly,
+            direction: webrtc.TransceiverDirection.SendRecv,
             streams: [localStream!],
           ),
         );
@@ -1175,6 +1180,53 @@ class WebRTCConnectionManager {
           debugPrint(
               'ℹ️ WebRTC: Track ${track.id} (${track.kind}) already present in peer ${entry.key}, skipping.');
         }
+      }
+    }
+  }
+
+  /// [REPAIR P5]: Attach the current local video track to every peer.
+  ///
+  /// Prefers `RTCRtpSender.replaceTrack()` when the peer already has a video
+  /// sender (no new m-line, no renegotiation churn), and only creates a single
+  /// `SendRecv` video transceiver when none exists yet. This never touches the
+  /// audio sender, so mute/unmute stays in sync, and it cannot create the
+  /// duplicate video m-lines that the previous add/remove-transceiver flow did.
+  Future<void> upgradeVideoForPeers() async {
+    final videoTrack = localStream?.getVideoTracks().firstOrNull;
+    if (videoTrack == null) {
+      debugPrint('⚠️ [P5] upgradeVideoForPeers: no local video track.');
+      return;
+    }
+    for (var entry in _peers.entries.toList()) {
+      final peer = entry.value;
+      if (peer.isDisposed) continue;
+      final pc = peer.pc;
+      try {
+        final senders = await pc.getSenders();
+        webrtc.RTCRtpSender? videoSender;
+        for (final s in senders) {
+          if (s.track?.kind == 'video') {
+            videoSender = s;
+            break;
+          }
+        }
+        if (videoSender != null) {
+          await videoSender.replaceTrack(videoTrack);
+          debugPrint(
+              '🔁 [P5] Replaced video track on existing sender (${entry.key}).');
+        } else {
+          await pc.addTransceiver(
+            track: videoTrack,
+            init: webrtc.RTCRtpTransceiverInit(
+              direction: webrtc.TransceiverDirection.SendRecv,
+              streams: [localStream!],
+            ),
+          );
+          debugPrint(
+              '➕ [P5] Added SendRecv video transceiver (${entry.key}).');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [P5] upgradeVideoForPeers error (${entry.key}): $e');
       }
     }
   }

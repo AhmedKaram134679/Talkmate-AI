@@ -68,13 +68,26 @@ class CallForegroundService : Service() {
 
         val notification = buildActiveNotification(callerName, isVideo, callId, senderId)
 
+        // [REPAIR P6]: An active call captures the microphone (and the camera for
+        // a video call). On Android 14+ the started FGS type MUST include these,
+        // or the OS blocks mic/camera capture while backgrounded / screen-off.
+        var activeType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        if (isVideo) {
+            activeType = activeType or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+
         // Switch Foreground Service to Active ID
-        startForegroundSafe(NOTIFICATION_ID_ACTIVE, notification)
+        startForegroundSafe(NOTIFICATION_ID_ACTIVE, notification, activeType)
     }
 
-    private fun startForegroundSafe(id: Int, notification: Notification) {
+    private fun startForegroundSafe(
+        id: Int,
+        notification: Notification,
+        serviceType: Int = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+            startForeground(id, notification, serviceType)
         } else {
             startForeground(id, notification)
         }
