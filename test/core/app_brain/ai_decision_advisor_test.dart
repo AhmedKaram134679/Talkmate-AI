@@ -1,14 +1,34 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:talkmate_ai/core/app_brain/ai/ai_decision_advisor.dart';
 import 'package:talkmate_ai/core/app_brain/app_brain.dart';
 import 'package:talkmate_ai/core/app_brain/app_events.dart';
 import 'package:talkmate_ai/core/app_brain/engagement/decision_model.dart';
+import 'package:talkmate_ai/core/app_brain/learning/behavior_tracker.dart';
 
 void main() {
   late AIDecisionAdvisor advisor;
 
   setUp(() {
+    Get.testMode = true;
+    // AIDecisionAdvisor.getDecision() reads BehaviorTracker.instance, which in
+    // turn resolves IAppBrain. Register both so the advisor can access them.
+    if (!Get.isRegistered<IAppBrain>()) {
+      Get.put<IAppBrain>(AppBrain());
+    }
+    if (!Get.isRegistered<BehaviorTracker>()) {
+      Get.put<BehaviorTracker>(BehaviorTracker());
+    }
     advisor = AIDecisionAdvisor();
+  });
+
+  tearDown(() async {
+    if (Get.isRegistered<BehaviorTracker>()) {
+      await Get.delete<BehaviorTracker>(force: true);
+    }
+    if (Get.isRegistered<IAppBrain>()) {
+      await Get.delete<IAppBrain>(force: true);
+    }
   });
 
   group('AIDecisionAdvisor Tests', () {
