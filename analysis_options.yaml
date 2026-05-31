@@ -9,7 +9,10 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   exclude:
-    - third_party/flutter_webrtc/example/**
+    # Vendored third-party packages are not maintained here; do not lint them.
+    # (Previously only the example app was excluded, so vendored library code
+    # still failed `flutter analyze` in CI on an info-level lint.)
+    - third_party/**
   errors:
     avoid_dynamic_calls: ignore
 include: package:flutter_lints/flutter.yaml
