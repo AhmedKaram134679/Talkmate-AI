@@ -1,0 +1,10 @@
+﻿Analyzing talkmate_ai...                                        
+
+warning - Dead code - lib\data\repositories\compliance_repository.dart:57:3 - dead_code
+warning - The declaration 'getMyConsents' isn't referenced - lib\data\repositories\compliance_repository.dart:57:29 - unused_element
+warning - The declaration 'getLastPurgeLog' isn't referenced - lib\data\repositories\compliance_repository.dart:80:33 - unused_element
+  error - Expected to find '}' - lib\data\repositories\compliance_repository.dart:97:1 - expected_token
+   info - Sort directive sections alphabetically - lib\data\repositories\local\local_message_repository_native.dart:8:1 - directives_ordering
+  error - The method 'getMyConsents' isn't defined for the type 'ComplianceRepository' - lib\screens\compliance_dashboard_screen.dart:31:36 - undefined_method
+  error - The method 'getLastPurgeLog' isn't defined for the type 'ComplianceRepository' - lib\screens\compliance_dashboard_screen.dart:32:33 - undefined_method
+

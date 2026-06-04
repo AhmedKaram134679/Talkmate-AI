@@ -1,0 +1,7 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Sort directive sections alphabetically - lib\core\app_brain\assimilation\feature_gatekeeper.dart:5:1 - directives_ordering
+   info - Local variables should be final - lib\core\app_brain\assimilation\feature_gatekeeper.dart:90:5 - prefer_final_locals
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\chats_screen.dart:353:28 - avoid_dynamic_calls
+   info - 'encryptedSharedPreferences' is deprecated and shouldn't be used. EncryptedSharedPreferences is deprecated and will be removed in v11. The Jetpack Security library is deprecated by Google. Your data will be automatically migrated to custom ciphers on first access. Remove this parameter - it will be ignored - lib\services\security\encrypted_storage_service.dart:10:30 - deprecated_member_use
+

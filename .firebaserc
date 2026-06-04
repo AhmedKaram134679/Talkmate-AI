@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "prod": "talkmate-ai-392cb",
+    "default": "talkmate-ai-392cb"
+  },
+  "targets": {},
+  "etags": {}
+}

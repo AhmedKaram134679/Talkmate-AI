@@ -1,0 +1,79 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "talkmate-ai-392cb",
+          "appId": "1:128445203121:android:d4cc2b9f59b7823061d890",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "talkmate-ai-392cb",
+          "configurations": {
+            "android": "1:128445203121:android:d4cc2b9f59b7823061d890",
+            "ios": "1:128445203121:ios:48ddb64d5168556761d890",
+            "macos": "1:128445203121:ios:48ddb64d5168556761d890",
+            "web": "1:128445203121:web:e00adb5d8111081961d890",
+            "windows": "1:128445203121:web:e00adb5d8111081961d890"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "pubsub": {
+      "port": 8085
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "database": {
+      "port": 9000
+    },
+    "eventarc": {
+      "port": 9299
+    },
+    "extensions": {
+      "port": 5002
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

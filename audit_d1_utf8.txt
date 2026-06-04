@@ -1,0 +1,80 @@
+﻿Analyzing talkmate_ai...                                        
+
+  error - Undefined name 'AppLogger' - lib\core\bootstrapper.dart:136:5 - undefined_identifier
+  error - Invalid reference to 'this' expression - lib\core\utils\app_logger.dart:63:7 - invalid_reference_to_this
+  error - The static method 'error' can't be accessed through an instance - lib\core\utils\app_logger.dart:63:12 - instance_access_to_static_member
+  error - Undefined class 'SupabaseClient' - lib\data\repositories\compliance_repository.dart:5:9 - undefined_class
+  error - Undefined name 'Supabase' - lib\data\repositories\compliance_repository.dart:5:34 - undefined_identifier
+  error - Expected a class member - lib\data\repositories\compliance_repository.dart:14:5 - expected_class_member
+  error - The name of a constructor must match the name of the enclosing class - lib\data\repositories\compliance_repository.dart:14:12 - invalid_constructor_name
+   info - Use the generic function type syntax to declare the parameter '' - lib\data\repositories\compliance_repository.dart:14:37 - use_function_type_syntax_for_parameters
+  error - Expected an identifier - lib\data\repositories\compliance_repository.dart:14:37 - missing_identifier
+  error - Expected to find ')' - lib\data\repositories\compliance_repository.dart:14:40 - expected_token
+warning - The declaration '<unnamed>' isn't referenced - lib\data\repositories\local\local_message_repository_native.dart:11:7 - unused_element
+  error - Missing concrete implementations of 'abstract class ILocalMessageRepository.clearChat', 'abstract class ILocalMessageRepository.close', 'abstract class ILocalMessageRepository.deleteMessage', 'abstract class ILocalMessageRepository.deleteSyncAction', and 6 more - lib\data\repositories\local\local_message_repository_native.dart:11:7 - non_abstract_class_inherits_abstract_member
+warning - The declaration '_getController' isn't referenced - lib\data\repositories\local\local_message_repository_native.dart:15:35 - unused_element
+warning - The declaration '_notify' isn't referenced - lib\data\repositories\local\local_message_repository_native.dart:21:16 - unused_element
+  error - Expected a class member - lib\data\repositories\local\local_message_repository_native.dart:53:7 - expected_class_member
+  error - Expected an identifier - lib\data\repositories\local\local_message_repository_native.dart:53:13 - missing_identifier
+   info - Missing type annotation - lib\data\repositories\local\local_message_repository_native.dart:53:14 - strict_top_level_inference
+   info - Missing type annotation - lib\data\repositories\local\local_message_repository_native.dart:53:17 - strict_top_level_inference
+  error - Undefined name 'AppLogger' - lib\data\repositories\local\local_message_repository_native.dart:54:7 - undefined_identifier
+  error - Undefined name 'message' - lib\data\repositories\local\local_message_repository_native.dart:55:32 - undefined_identifier
+  error - Undefined name 'message' - lib\data\repositories\local\local_message_repository_native.dart:55:56 - undefined_identifier
+  error - A rethrow must be inside of a catch clause - lib\data\repositories\local\local_message_repository_native.dart:58:7 - rethrow_outside_catch
+  error - The function '_getController' isn't defined - lib\data\repositories\local\local_message_repository_native.dart:65:24 - undefined_function
+  error - The function '_notify' isn't defined - lib\data\repositories\local\local_message_repository_native.dart:66:15 - undefined_function
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:72:22 - undefined_identifier
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:85:22 - undefined_identifier
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:99:22 - undefined_identifier
+  error - The function '_notify' isn't defined - lib\data\repositories\local\local_message_repository_native.dart:118:35 - undefined_function
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:123:22 - undefined_identifier
+  error - The function '_notify' isn't defined - lib\data\repositories\local\local_message_repository_native.dart:134:35 - undefined_function
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:139:22 - undefined_identifier
+  error - The function '_notify' isn't defined - lib\data\repositories\local\local_message_repository_native.dart:145:15 - undefined_function
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:150:22 - undefined_identifier
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:157:22 - undefined_identifier
+  error - Undefined name '_dbService' - lib\data\repositories\local\local_message_repository_native.dart:167:22 - undefined_identifier
+  error - Undefined name '_controllers' - lib\data\repositories\local\local_message_repository_native.dart:204:30 - undefined_identifier
+  error - Undefined name '_controllers' - lib\data\repositories\local\local_message_repository_native.dart:207:5 - undefined_identifier
+  error - Expected a method, getter, setter or operator declaration - lib\data\repositories\local\local_message_repository_native.dart:209:1 - expected_executable
+  error - Undefined name 'await' in function body not marked with 'async' - lib\main.dart:29:3 - undefined_identifier_await
+   info - The variable name 'AppBootstrapper' isn't a lowerCamelCase identifier - lib\main.dart:29:9 - non_constant_identifier_names
+  error - Functions must have an explicit list of parameters - lib\main.dart:29:9 - missing_function_parameters
+  error - A function body must be provided - lib\main.dart:29:24 - missing_function_body
+  error - Expected a method, getter, setter or operator declaration - lib\main.dart:29:24 - expected_executable
+   info - Missing type annotation - lib\main.dart:29:25 - strict_top_level_inference
+   info - The function 'init' should have a return type but doesn't - lib\main.dart:29:25 - always_declare_return_types
+  error - A function body must be provided - lib\main.dart:29:31 - missing_function_body
+   info - Missing type annotation - lib\main.dart:32:3 - strict_top_level_inference
+   info - The function 'unawaited' should have a return type but doesn't - lib\main.dart:32:3 - always_declare_return_types
+  error - Undefined class 'instance' - lib\main.dart:32:13 - undefined_class
+  error - Expected an identifier - lib\main.dart:32:40 - missing_identifier
+  error - Expected to find ')' - lib\main.dart:32:41 - expected_token
+  error - A function body must be provided - lib\main.dart:32:82 - missing_function_body
+   info - Missing type annotation - lib\main.dart:33:3 - strict_top_level_inference
+   info - The function 'AppLogger' should have a return type but doesn't - lib\main.dart:33:3 - always_declare_return_types
+   info - The variable name 'AppLogger' isn't a lowerCamelCase identifier - lib\main.dart:33:3 - non_constant_identifier_names
+  error - Functions must have an explicit list of parameters - lib\main.dart:33:3 - missing_function_parameters
+  error - A function body must be provided - lib\main.dart:33:12 - missing_function_body
+  error - Expected a method, getter, setter or operator declaration - lib\main.dart:33:12 - expected_executable
+   info - Missing type annotation - lib\main.dart:33:13 - strict_top_level_inference
+   info - The function 'info' should have a return type but doesn't - lib\main.dart:33:13 - always_declare_return_types
+  error - Expected an identifier - lib\main.dart:33:18 - missing_identifier
+   info - Missing type annotation - lib\main.dart:33:55 - strict_top_level_inference
+  error - Named parameters must be enclosed in curly braces ('{' and '}') - lib\main.dart:33:62 - named_parameter_outside_group
+  error - Using a colon as the separator before a default value is no longer supported - lib\main.dart:33:62 - obsolete_colon_for_default_value
+  error - The default value of an optional parameter must be constant - lib\main.dart:33:64 - non_constant_default_value
+  error - A function body must be provided - lib\main.dart:33:114 - missing_function_body
+   info - Missing type annotation - lib\main.dart:35:3 - strict_top_level_inference
+   info - The function 'runApp' should have a return type but doesn't - lib\main.dart:35:3 - always_declare_return_types
+  error - Can't have modifier 'const' here - lib\main.dart:35:10 - extraneous_modifier
+  error - Function-typed parameters can't specify 'const', 'final' or 'var' in place of a return type - lib\main.dart:35:10 - function_typed_parameter_var
+   info - The variable name 'TalkMateApp' isn't a lowerCamelCase identifier - lib\main.dart:35:16 - non_constant_identifier_names
+   info - Use the generic function type syntax to declare the parameter 'TalkMateApp' - lib\main.dart:35:16 - use_function_type_syntax_for_parameters
+  error - A function body must be provided - lib\main.dart:35:30 - missing_function_body
+  error - Expected a method, getter, setter or operator declaration - lib\main.dart:36:1 - expected_executable
+  error - Undefined name 'AnalyticsService' - lib\screens\chats_screen.dart:45:15 - undefined_identifier
+  error - The class 'ComplianceRepository' doesn't have an unnamed constructor - lib\screens\compliance_dashboard_screen.dart:14:38 - new_with_undefined_constructor_default
+  error - The method 'getRejectionStats' isn't defined for the type 'ComplianceRepository' - lib\screens\compliance_dashboard_screen.dart:30:33 - undefined_method
+

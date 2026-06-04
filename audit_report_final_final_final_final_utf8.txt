@@ -1,0 +1,11 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:112:25 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:128:25 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:628:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:636:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1513:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1555:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:399:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:827:11 - unawaited_futures
+

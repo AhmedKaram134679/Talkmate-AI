@@ -1,0 +1,10 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - The constant name 'error_rate' isn't a lowerCamelCase identifier - lib\core\app_brain\adaptive\adaptive_models.dart:5:52 - constant_identifier_names
+   info - The constant name 'user_activity' isn't a lowerCamelCase identifier - lib\core\app_brain\adaptive\adaptive_models.dart:5:64 - constant_identifier_names
+   info - Sort directive sections alphabetically - lib\core\app_brain\assimilation\feature_gatekeeper.dart:5:1 - directives_ordering
+   info - Local variables should be final - lib\core\app_brain\assimilation\feature_gatekeeper.dart:90:5 - prefer_final_locals
+   info - Sort directive sections alphabetically - lib\core\bootstrapper.dart:33:1 - directives_ordering
+   info - Method invocation or property access on a 'dynamic' target - lib\screens\chats_screen.dart:353:28 - avoid_dynamic_calls
+   info - Sort directive sections alphabetically - lib\services\observability\app_observability.dart:6:1 - directives_ordering
+

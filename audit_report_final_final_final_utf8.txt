@@ -1,0 +1,24 @@
+﻿Analyzing talkmate_ai...                                        
+
+   info - Unclosed instance of 'Sink' - lib\data\repositories\local\local_message_repository_native.dart:58:11 - close_sinks
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:111:25 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\repositories\local\local_message_repository_native.dart:127:25 - unawaited_futures
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_friendship_repository.dart:39:11 - close_sinks
+   info - Unclosed instance of 'Sink' - lib\data\repositories\mocks\mock_message_repository.dart:27:11 - close_sinks
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:71:5 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:135:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:169:9 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:179:7 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\chat_sync_engine.dart:194:33 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\database_service_native.dart:85:8 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:628:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\data\services\messaging_service.dart:636:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1513:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:1555:17 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chat_screen.dart:2544:36 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:399:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:785:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:827:11 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:841:22 - unawaited_futures
+   info - Missing an 'await' for the 'Future' computed by this expression - lib\screens\chats_screen.dart:891:22 - unawaited_futures
+
