@@ -6,11 +6,13 @@ import 'package:get/get.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
 import 'package:talkmate_ai/core/app_brain/app_brain.dart';
 import 'package:talkmate_ai/core/utils/app_logger.dart';
+import 'package:talkmate_ai/data/models/media_state_model.dart';
 import 'package:talkmate_ai/data/models/message_model.dart';
 import 'package:talkmate_ai/data/models/sync_action_model.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_chat_repository.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_local_message_repository.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_message_repository.dart';
+import 'package:talkmate_ai/data/services/media_state_store.dart';
 import 'package:talkmate_ai/services/observability/analytics_service.dart';
 import 'package:talkmate_ai/services/observability/app_observability.dart';
 import 'package:talkmate_ai/services/observability/performance_tracker.dart';
@@ -256,6 +258,12 @@ class ChatSyncEngine extends GetxService {
       // 2. Update local status to SENT
       await _localRepo.updateMessageStatus(msg.localId!, MessageStatus.sent,
           serverId: sentMsg.id);
+
+      // Update Unified Media State Store
+      await MediaStateStore.to.updatePartial(
+        msg.localId!,
+        uploadStatus: MediaUploadStatus.synced,
+      );
 
       AppObservability.instance.trackMessageSent(msg.localId!, sentMsg.id);
 

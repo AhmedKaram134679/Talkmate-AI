@@ -1,118 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:talkmate_ai/controllers/chat_controller.dart';
+import 'package:talkmate_ai/models/message_model.dart';
+import 'package:talkmate_ai/services/audio/audio_queue_manager.dart';
 
-import 'package:talkmate_ai/services/audio/dynamic_audio_player.dart';
-
-class VoiceMessageBubble extends StatefulWidget {
-  final String url;
+class VoiceMessageBubble extends StatelessWidget {
+  final MessageModel message;
   final bool isMe;
   final Color? color;
 
   const VoiceMessageBubble({
     super.key,
-    required this.url,
+    required this.message,
     required this.isMe,
     this.color,
   });
-
-  @override
-  State<VoiceMessageBubble> createState() => _VoiceMessageBubbleState();
-}
-
-class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
-  DynamicAudioPlayer? _player;
-  bool _isPlaying = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-  StreamSubscription? _durationSubscription;
-  StreamSubscription? _positionSubscription;
-  StreamSubscription? _stateSubscription;
-  bool _isPlayerInitializing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Creation deferred until Play tap to avoid Windows crashes when many bubbles load at once
-  }
-
-  Future<void> _ensurePlayerInitialized() async {
-    if (_player != null || _isPlayerInitializing) return;
-    _isPlayerInitializing = true;
-
-    try {
-      final player = DynamicAudioPlayer();
-
-      // Listen to streams
-      _durationSubscription = player.durationStream.listen((d) {
-        if (mounted) setState(() => _duration = d);
-      });
-
-      _positionSubscription = player.positionStream.listen((p) {
-        if (mounted) setState(() => _position = p);
-      });
-
-      _stateSubscription = player.stateStream.listen((state) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = state == PlayerState.playing;
-            if (state == PlayerState.completed) {
-              _position = Duration.zero;
-              // Reset UI to start
-            }
-          });
-        }
-      });
-
-      await player.setUrl(widget.url);
-
-      if (mounted) {
-        setState(() {
-          _player = player;
-          _isPlayerInitializing = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('DynamicAudioPlayer initialization failed: $e');
-      if (mounted) setState(() => _isPlayerInitializing = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _durationSubscription?.cancel();
-    _positionSubscription?.cancel();
-    _stateSubscription?.cancel();
-    _player?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _playPause() async {
-    if (_player == null) {
-      await _ensurePlayerInitialized();
-    }
-    if (_player == null) return; // Still failed
-
-    try {
-      if (_isPlaying) {
-        await _player!.pause();
-      } else {
-        await _player!.resume();
-      }
-    } catch (e) {
-      debugPrint('Error playing/pausing: $e');
-    }
-  }
-
-  Future<void> _seek(double value) async {
-    if (_player == null) return;
-    try {
-      final position = Duration(milliseconds: value.toInt());
-      await _player!.seek(position);
-    } catch (e) {
-      debugPrint('Error seeking: $e');
-    }
-  }
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -124,95 +26,155 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final onColor = widget.isMe ? Colors.white : theme.colorScheme.onSurface;
+    final onColor = isMe ? Colors.white : theme.colorScheme.onSurface;
+    final playbackController = Get.find<VoicePlaybackController>();
 
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 250),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Play/Pause Button with progress circle
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: CircularProgressIndicator(
-                  value: _duration.inMilliseconds > 0
-                      ? _position.inMilliseconds / _duration.inMilliseconds
-                      : 0,
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                      onColor.withValues(alpha: 0.8)),
-                  backgroundColor: onColor.withValues(alpha: 0.1),
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: onColor,
-                  size: 28,
-                ),
-                onPressed: _playPause,
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
-          // Waveform-like bars (simulated for now, or just a sleek slider)
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Obx(() {
+      final isCurrent = playbackController.currentMessage?.id == message.id;
+      final isPlaying = isCurrent && playbackController.isPlaying.value;
+      
+      final currentPosMs = isCurrent ? playbackController.positionMs.value : 0;
+      final totalDurMs = isCurrent ? playbackController.durationMs.value : 0;
+      
+      final position = Duration(milliseconds: currentPosMs);
+      final duration = Duration(milliseconds: totalDurMs);
+      
+      final progress = totalDurMs > 0 ? (currentPosMs / totalDurMs) : 0.0;
+
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 250),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Play/Pause Button with progress circle
+            Stack(
+              alignment: Alignment.center,
               children: [
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 2,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape:
-                        const RoundSliderOverlayShape(overlayRadius: 14),
-                    activeTrackColor: onColor,
-                    inactiveTrackColor: onColor.withValues(alpha: 0.2),
-                    thumbColor: onColor,
-                    overlayColor: onColor.withValues(alpha: 0.1),
-                  ),
-                  child: Slider(
-                    value: _position.inMilliseconds.toDouble(),
-                    max: _duration.inMilliseconds.toDouble() > 0
-                        ? _duration.inMilliseconds.toDouble()
-                        : 1.0,
-                    onChanged: (value) async {
-                      await _seek(value);
-                    },
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        onColor.withValues(alpha: 0.8)),
+                    backgroundColor: onColor.withValues(alpha: 0.1),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _formatDuration(_position),
-                        style: TextStyle(
-                            color: onColor.withValues(alpha: 0.7),
-                            fontSize: 10),
-                      ),
-                      Text(
-                        _formatDuration(_duration),
-                        style: TextStyle(
-                            color: onColor.withValues(alpha: 0.7),
-                            fontSize: 10),
-                      ),
-                    ],
+                IconButton(
+                  icon: Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: onColor,
+                    size: 28,
                   ),
+                  onPressed: () async {
+                    if (isCurrent) {
+                      if (isPlaying) {
+                        await playbackController.pausePlayback();
+                      } else {
+                        await playbackController.resumePlayback();
+                      }
+                    } else {
+                      // Stop current playback
+                      await playbackController.stopPlayback();
+                      // Find all messages in chat
+                      final chatController = Get.find<ChatController>();
+                      final chatMessages = chatController.getMessages(message.chatId);
+                      // Build queue starting from this message and play
+                      await playbackController.buildQueueFrom(
+                        messages: chatMessages,
+                        selectedMessage: message,
+                      );
+                    }
+                  },
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(width: 8),
+            // Waveform-like slider
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 14),
+                      activeTrackColor: onColor,
+                      inactiveTrackColor: onColor.withValues(alpha: 0.2),
+                      thumbColor: onColor,
+                      overlayColor: onColor.withValues(alpha: 0.1),
+                    ),
+                    child: Slider(
+                      value: currentPosMs.toDouble(),
+                      max: totalDurMs.toDouble() > 0
+                          ? totalDurMs.toDouble()
+                          : 1.0,
+                      onChanged: (value) async {
+                        if (isCurrent) {
+                          await playbackController.seekTo(Duration(milliseconds: value.toInt()));
+                        }
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(position),
+                          style: TextStyle(
+                              color: onColor.withValues(alpha: 0.7),
+                              fontSize: 10),
+                        ),
+                        Text(
+                          _formatDuration(duration),
+                          style: TextStyle(
+                              color: onColor.withValues(alpha: 0.7),
+                              fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isCurrent)
+              // Speed control button
+              GestureDetector(
+                onTap: () {
+                  final currentSpeed = playbackController.playbackSpeed.value;
+                  double nextSpeed = 1.0;
+                  if (currentSpeed == 1.0) {
+                    nextSpeed = 1.5;
+                  } else if (currentSpeed == 1.5) {nextSpeed = 2.0;}
+                  playbackController.setSpeed(nextSpeed);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: onColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${playbackController.playbackSpeed.value.toStringAsFixed(1).replaceFirst('.0', '')}x',
+                    style: TextStyle(
+                      color: onColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    });
   }
 }

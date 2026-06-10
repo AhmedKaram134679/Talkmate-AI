@@ -1,14 +1,24 @@
-import 'dart:typed_data';
 
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart'; // Provides XFile
+import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:talkmate_ai/utils/forensic_logger.dart';
 
 /// StorageService: wraps Supabase Storage uploads and returns public URLs
+/// 
+/// CRITICAL FIX: Uses runtime getter for Supabase client instead of early binding.
+/// This prevents race conditions during app startup and ensures the client is
+/// always fully initialized before being used.
 class StorageService {
   StorageService._();
   static final StorageService instance = StorageService._();
 
-  final _client = Supabase.instance.client;
+  // CRITICAL FIX: Use getter instead of field initialization
+  // This prevents early binding before Supabase is fully initialized
+  SupabaseClient get _client => Supabase.instance.client;
+  
   static const String _bucket = 'talkmate';
 
   /// Upload a file from an [XFile] to a storage [path] and return the public URL
@@ -16,38 +26,187 @@ class StorageService {
     required XFile file,
     required String path,
     void Function(double progress)? onProgress,
+    Map<String, dynamic>? logContext,
   }) async {
-    final bytes = await file.readAsBytes();
-    return uploadBytes(bytes: bytes, path: path, onProgress: onProgress);
+    return uploadFileDirect(
+      file: File(file.path),
+      path: path,
+      onProgress: onProgress,
+      logContext: logContext,
+    );
   }
 
   /// Upload raw bytes and return URL
+  /// 
+  /// Includes comprehensive error handling and diagnostics to prevent silent failures.
   Future<(String url, int size)> uploadBytes({
     required List<int> bytes,
     required String path,
     void Function(double progress)? onProgress,
+    Map<String, dynamic>? logContext,
   }) async {
-    // Supabase storage doesn't have a built-in progress stream for putData
-    // in the same way as Firebase, but we can call onProgress if needed
-    // (though for small files it's almost instant).
+    final ctx = logContext ?? {};
+    final msgId = (ctx['messageId'] ?? '').toString();
+    final taskId = (ctx['taskId'] ?? '').toString();
+    final originalFileName = (ctx['originalFileName'] ?? ctx['fileName'] ?? path.split('/').last).toString();
+    final fileExtension = p.extension(path).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '');
 
-    await _client.storage.from(_bucket).uploadBinary(
-          path,
-          Uint8List.fromList(bytes),
-          fileOptions: FileOptions(
-            contentType: _inferContentType(path),
-            upsert: true,
-          ),
-          // retryAttempts: 3,
-        );
+    // Log STORAGE_UPLOAD_STARTED
+    ForensicLogger.log(
+      tag: 'STORAGE_UPLOAD_STARTED',
+      messageId: msgId,
+      localId: msgId,
+      taskId: taskId,
+      originalFileName: originalFileName,
+      generatedStorageKey: path,
+      fileExtension: fileExtension,
+      status: 'uploading',
+    );
 
-    final url = _client.storage.from(_bucket).getPublicUrl(path);
-    final size = bytes.length;
+    try {
+      // Verify Supabase client is initialized
+      final client = _client;
 
-    // Simulate completion progress if listener provided
-    onProgress?.call(1.0);
+      debugPrint('🚀 [StorageService] UPLOAD_STORAGE_START: path=$path, size=${bytes.length} bytes, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}, fileName=${ctx['fileName']}, fileSize=${bytes.length}, localPath=${ctx['localPath']}, currentStatus=${ctx['currentStatus']}, retryCount=${ctx['retryCount']}');
 
-    return (url, size);
+      // Upload binary data to Supabase with a timeout
+      await client.storage.from(_bucket).uploadBinary(
+            path,
+            Uint8List.fromList(bytes),
+            fileOptions: FileOptions(
+              contentType: _inferContentType(path),
+              upsert: true,
+            ),
+          ).timeout(const Duration(minutes: 5));
+
+      // Get public URL
+      final url = client.storage.from(_bucket).getPublicUrl(path);
+      final size = bytes.length;
+
+      debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+
+      // Log STORAGE_UPLOAD_COMPLETED
+      ForensicLogger.log(
+        tag: 'STORAGE_UPLOAD_COMPLETED',
+        messageId: msgId,
+        localId: msgId,
+        taskId: taskId,
+        originalFileName: originalFileName,
+        generatedStorageKey: path,
+        fileExtension: fileExtension,
+        status: 'completed',
+        remoteUrl: url,
+      );
+
+      // Notify progress 100%
+      onProgress?.call(1.0);
+      debugPrint('🚀 [StorageService] UPLOAD_STORAGE_PROGRESS: taskId=${ctx['taskId']}, progress=100%');
+
+      return (url, size);
+    } catch (e, st) {
+      debugPrint('❌ [StorageService] UPLOAD_STORAGE_FAILED: path=$path, error=$e, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+      debugPrint('❌ [StorageService] Stacktrace: $st');
+
+      // Log STORAGE_UPLOAD_FAILED
+      ForensicLogger.log(
+        tag: 'STORAGE_UPLOAD_FAILED',
+        messageId: msgId,
+        localId: msgId,
+        taskId: taskId,
+        originalFileName: originalFileName,
+        generatedStorageKey: path,
+        fileExtension: fileExtension,
+        status: 'failed',
+        extra: e.toString(),
+      );
+
+      rethrow;
+    }
+  }
+
+  /// Upload a file directly without reading into memory (Better for large files)
+  Future<(String url, int size)> uploadFileDirect({
+    required File file,
+    required String path,
+    void Function(double progress)? onProgress,
+    Map<String, dynamic>? logContext,
+  }) async {
+    final ctx = logContext ?? {};
+    final msgId = (ctx['messageId'] ?? '').toString();
+    final taskId = (ctx['taskId'] ?? '').toString();
+    final originalFileName = (ctx['originalFileName'] ?? ctx['fileName'] ?? path.split('/').last).toString();
+    final fileExtension = p.extension(path).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '');
+
+    // Log STORAGE_UPLOAD_STARTED
+    ForensicLogger.log(
+      tag: 'STORAGE_UPLOAD_STARTED',
+      messageId: msgId,
+      localId: msgId,
+      taskId: taskId,
+      originalFileName: originalFileName,
+      generatedStorageKey: path,
+      fileExtension: fileExtension,
+      status: 'uploading',
+    );
+
+    try {
+      final client = _client;
+      final size = await file.length();
+      
+      debugPrint('🚀 [StorageService] UPLOAD_STORAGE_START: path=$path, size=$size bytes, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}, fileName=${ctx['fileName']}, fileSize=$size, localPath=${ctx['localPath']}, currentStatus=${ctx['currentStatus']}, retryCount=${ctx['retryCount']}');
+
+      // Upload file directly to Supabase with a timeout
+      await client.storage.from(_bucket).upload(
+            path,
+            file,
+            fileOptions: FileOptions(
+              contentType: _inferContentType(path),
+              upsert: true,
+            ),
+          ).timeout(const Duration(minutes: 15)); // Increased timeout for large videos
+
+      // Get public URL
+      final url = client.storage.from(_bucket).getPublicUrl(path);
+
+      debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+
+      // Log STORAGE_UPLOAD_COMPLETED
+      ForensicLogger.log(
+        tag: 'STORAGE_UPLOAD_COMPLETED',
+        messageId: msgId,
+        localId: msgId,
+        taskId: taskId,
+        originalFileName: originalFileName,
+        generatedStorageKey: path,
+        fileExtension: fileExtension,
+        status: 'completed',
+        remoteUrl: url,
+      );
+
+      // Notify progress 100%
+      onProgress?.call(1.0);
+      debugPrint('🚀 [StorageService] UPLOAD_STORAGE_PROGRESS: taskId=${ctx['taskId']}, progress=100%');
+
+      return (url, size);
+    } catch (e, st) {
+      debugPrint('❌ [StorageService] UPLOAD_STORAGE_FAILED: path=$path, error=$e, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+      debugPrint('❌ [StorageService] Stacktrace: $st');
+
+      // Log STORAGE_UPLOAD_FAILED
+      ForensicLogger.log(
+        tag: 'STORAGE_UPLOAD_FAILED',
+        messageId: msgId,
+        localId: msgId,
+        taskId: taskId,
+        originalFileName: originalFileName,
+        generatedStorageKey: path,
+        fileExtension: fileExtension,
+        status: 'failed',
+        extra: e.toString(),
+      );
+
+      rethrow;
+    }
   }
 
   String _inferContentType(String path) {

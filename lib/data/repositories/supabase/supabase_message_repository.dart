@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:talkmate_ai/data/models/message_model.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_message_repository.dart';
+import 'package:talkmate_ai/utils/forensic_logger.dart';
 import 'package:uuid/uuid.dart';
 
 class SupabaseMessageRepository implements IMessageRepository {
@@ -40,16 +41,46 @@ class SupabaseMessageRepository implements IMessageRepository {
       'created_at': now.toIso8601String(),
     };
 
+    // Log MESSAGE_SYNC_STARTED
+    ForensicLogger.log(
+      tag: 'MESSAGE_SYNC_STARTED',
+      messageId: messageId,
+      chatId: chatId,
+      fileName: text,
+      status: 'sending',
+    );
+
     try {
       final response = await _client
           .from('messages')
-          .insert(messageData)
+          .upsert(messageData)
           .select()
           .single()
           .timeout(const Duration(seconds: 15));
-      return Message.fromJson(response, response['id']);
+
+      final syncedMessage = Message.fromJson(response, response['id']);
+
+      // Log MESSAGE_SYNC_SUCCESS
+      ForensicLogger.log(
+        tag: 'MESSAGE_SYNC_SUCCESS',
+        messageId: messageId,
+        chatId: chatId,
+        status: 'sent',
+      );
+
+      return syncedMessage;
     } catch (e) {
       debugPrint('SupabaseMessageRepository: sendMessage error: $e');
+
+      // Log MESSAGE_SYNC_FAILED
+      ForensicLogger.log(
+        tag: 'MESSAGE_SYNC_FAILED',
+        messageId: messageId,
+        chatId: chatId,
+        status: 'failed',
+        extra: 'error=$e',
+      );
+
       rethrow;
     }
   }

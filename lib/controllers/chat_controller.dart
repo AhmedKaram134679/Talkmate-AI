@@ -4,14 +4,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart'; // Provides XFile
+import 'package:path/path.dart' as p;
 import 'package:rxdart/rxdart.dart' as rx_dart;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:talkmate_ai/config/app_config.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
 import 'package:talkmate_ai/core/app_brain/assimilation/engine/sovereign_communication_engine.dart';
-import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/models/chat_model.dart' as data_chat_models;
+import 'package:talkmate_ai/data/models/media_state_model.dart';
 import 'package:talkmate_ai/data/models/message_model.dart' as data_msg_models;
 import 'package:talkmate_ai/data/models/sync_action_model.dart';
 import 'package:talkmate_ai/data/models/typing_indicator_model.dart';
@@ -22,6 +23,8 @@ import 'package:talkmate_ai/data/repositories/contracts/i_message_repository.dar
 import 'package:talkmate_ai/data/repositories/contracts/i_typing_repository.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_user_repository.dart';
 import 'package:talkmate_ai/data/services/chat_sync_engine.dart';
+import 'package:talkmate_ai/data/services/media_services.dart';
+import 'package:talkmate_ai/data/services/media_state_store.dart';
 import 'package:talkmate_ai/data/services/storage_service.dart';
 import 'package:talkmate_ai/localization/app_localizations.dart';
 import 'package:talkmate_ai/models/chat_model.dart';
@@ -30,6 +33,8 @@ import 'package:talkmate_ai/services/audio/app_audio_service.dart';
 import 'package:talkmate_ai/services/observability/analytics_service.dart';
 import 'package:talkmate_ai/services/observability/performance_tracker.dart';
 import 'package:talkmate_ai/utils/device_identity.dart';
+import 'package:talkmate_ai/utils/forensic_logger.dart';
+import 'package:talkmate_ai/utils/video_thumbnail_helper.dart';
 import 'package:uuid/uuid.dart';
 
 enum MessageState { pending, sent, delivered, read, failed }
@@ -216,6 +221,147 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     _chatMessages.refresh();
   }
 
+  Future<void> _enqueueBackgroundUpload({
+    required String chatId,
+    required XFile file,
+    required MessageType type,
+    required String folder,
+    String? replyToMessageId,
+    void Function(double progress)? onProgress,
+  }) async {
+    final me = _getUserId();
+    if (me == null) return;
+    final localId = const Uuid().v4();
+
+    final storagePath = _getSafeStoragePath(
+      chatId: chatId,
+      userId: me,
+      folder: folder,
+      originalFileName: file.name,
+      messageId: localId,
+    );
+
+    if (onProgress != null) {
+      Get.find<BackgroundUploadService>()
+          .getUploadProgressObservable(localId)
+          .listen(onProgress);
+    }
+
+    // Secure file in permanent Documents storage to prevent temp folder deletion
+    String finalPath = file.path;
+    try {
+      final permFile = await MediaCacheManager().saveFilePermanently(file.path, localId);
+      finalPath = permFile.path;
+      ForensicLogger.log(
+        tag: 'VIDEO_MOVED_TO_PERMANENT_STORAGE',
+        messageId: localId,
+        chatId: chatId,
+        fileName: file.name,
+        localPath: finalPath,
+        status: 'queued',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Failed to save file permanently, fallback to original path: $e');
+    }
+
+    // Generate video thumbnail immediately
+    String? thumbPath;
+    if (type == MessageType.video) {
+      thumbPath = await VideoThumbnailHelper.generateThumbnail(
+        videoPath: finalPath,
+        messageId: localId,
+        chatId: chatId,
+      );
+    }
+
+    final reactionsMap = {
+      'localFilePath': finalPath,
+      'originalFileName': file.name,
+    };
+    if (thumbPath != null) {
+      reactionsMap['localThumbnailPath'] = thumbPath;
+    }
+
+    final dataMsg = data_msg_models.Message(
+      id: localId,
+      localId: localId,
+      chatId: chatId,
+      senderId: me,
+      type: _mapMessageTypeToData(type),
+      text: '',
+      mediaUrl: null,
+      mediaSize: null,
+      replyToMessageId: replyToMessageId,
+      status: data_msg_models.MessageStatus.uploading,
+      createdAt: DateTime.now(),
+      reactions: reactionsMap,
+      localFilePath: finalPath,
+      originalFileName: file.name,
+      uploadProgress: 0.0,
+    );
+
+    // Save message locally in SQLite
+    await _localRepo.saveMessage(dataMsg);
+
+    // Log VIDEO_MESSAGE_CREATED
+    ForensicLogger.log(
+      tag: 'VIDEO_MESSAGE_CREATED',
+      messageId: localId,
+      localId: localId,
+      chatId: chatId,
+      filename: file.name,
+      localFilePath: finalPath,
+      thumbnailPath: thumbPath,
+      status: 'created',
+      uploadProgress: 0.0,
+    );
+
+    // Seed Unified Media State Store
+    await MediaStateStore.to.updateState(MediaState(
+      messageId: localId,
+      localPath: finalPath,
+      thumbnailPath: thumbPath,
+      uploadStatus: MediaUploadStatus.queued,
+      fileName: file.name,
+      mediaType: type.name,
+    ));
+
+    // Log VIDEO_STATE_SAVED
+    ForensicLogger.log(
+      tag: 'VIDEO_STATE_SAVED',
+      messageId: localId,
+      localId: localId,
+      chatId: chatId,
+      filename: file.name,
+      localFilePath: finalPath,
+      thumbnailPath: thumbPath,
+      status: 'queued',
+      uploadProgress: 0.0,
+    );
+
+    // Add to the background upload service
+    await Get.find<BackgroundUploadService>().addUpload(
+      messageId: localId,
+      chatId: chatId,
+      userId: me,
+      localFilePath: finalPath,
+      uploadPath: storagePath,
+      mediaType: type.name,
+      fileName: file.name,
+    );
+
+    unawaited(AppAudioService.instance.play('message_send.mp3'));
+    unawaited(stopTyping(chatId));
+
+    // Success Retention Event
+    if (!_hasSentFirstMessage.value) {
+      _hasSentFirstMessage.value = true;
+      showFirstMessageSuccess.value = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hasSentFirstMessageKey, true);
+    }
+  }
+
   Future<void> uploadVideoAndSend({
     required String chatId,
     required XFile file,
@@ -229,41 +375,15 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (chatId.isEmpty) return;
     final me = _getUserId();
     if (me == null) return;
-    final fileName = file.name;
-    final storagePath =
-        'chats/$chatId/users/$me/videos/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: storagePath,
-        onProgress: onProgress,
-      );
-
-      final dataMsg = data_msg_models.Message(
-        id: const Uuid().v4(),
-        localId: const Uuid().v4(),
-        chatId: chatId,
-        senderId: me,
-        type: data_msg_models.MessageType.video,
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-        status: data_msg_models.MessageStatus.pending,
-        createdAt: DateTime.now(),
-      );
-
-      await _syncEngine.enqueueMessage(dataMsg);
-    } catch (e) {
-      debugPrint('uploadVideoAndSend failed: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.video,
+      folder: 'videos',
+      replyToMessageId: replyToMessageId,
+      onProgress: onProgress,
+    );
   }
-
-  // ... (some lines here) ...
 
   Future<void> uploadImageAndSend({
     required String chatId,
@@ -278,38 +398,14 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (chatId.isEmpty) return;
     final me = _getUserId();
     if (me == null) return;
-    final fileName = file.name;
-    final storagePath =
-        'chats/$chatId/users/$me/images/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: storagePath,
-        onProgress: onProgress,
-      );
-
-      final dataMsg = data_msg_models.Message(
-        id: const Uuid().v4(),
-        localId: const Uuid().v4(),
-        chatId: chatId,
-        senderId: me,
-        type: data_msg_models.MessageType.image,
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-        status: data_msg_models.MessageStatus.pending,
-        createdAt: DateTime.now(),
-      );
-
-      await _syncEngine.enqueueMessage(dataMsg);
-    } catch (e) {
-      debugPrint('uploadImageAndSend failed: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.image,
+      folder: 'images',
+      replyToMessageId: replyToMessageId,
+      onProgress: onProgress,
+    );
   }
 
   Future<void> uploadFileAndSend({
@@ -325,38 +421,14 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (chatId.isEmpty) return;
     final me = _getUserId();
     if (me == null) return;
-    final fileName = file.name;
-    final storagePath =
-        'chats/$chatId/users/$me/files/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: storagePath,
-        onProgress: onProgress,
-      );
-
-      final dataMsg = data_msg_models.Message(
-        id: const Uuid().v4(),
-        localId: const Uuid().v4(),
-        chatId: chatId,
-        senderId: me,
-        type: data_msg_models.MessageType.file,
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-        status: data_msg_models.MessageStatus.pending,
-        createdAt: DateTime.now(),
-      );
-
-      await _syncEngine.enqueueMessage(dataMsg);
-    } catch (e) {
-      debugPrint('uploadFileAndSend failed: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.file,
+      folder: 'files',
+      replyToMessageId: replyToMessageId,
+      onProgress: onProgress,
+    );
   }
 
   // --- Phase 6: Media helpers ---
@@ -372,38 +444,17 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (AppConfig.useMockData || chatId.isEmpty) return;
     final senderId = _getUserId();
     if (senderId == null) return;
-    final fileName = file.name;
-    final path =
-        'chats/$chatId/users/$senderId/images/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: path,
-      );
-      final sent = await Get.find<IMessageRepository>().sendMessage(
-        type: _mapMessageTypeToData(MessageType.image),
-        chatId: chatId,
-        senderId: senderId,
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-      );
-      await Get.find<IChatRepository>().updateLastMessage(
-        chatId: chatId,
-        message: sent,
-      );
-      unawaited(stopTyping(chatId));
-    } catch (e) {
-      AppLogger.e('sendImageFile failed', e);
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.image,
+      folder: 'images',
+      replyToMessageId: replyToMessageId,
+    );
   }
 
   // --- File sending helpers ---
 
-  // --- File sending helpers ---
   Future<void> sendFile({
     required String chatId,
     required XFile file,
@@ -416,34 +467,13 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (AppConfig.useMockData || chatId.isEmpty) return;
     final senderId = _getUserId();
     if (senderId == null) return;
-    // Use named property of XFile which is safer for Web
-    final fileName = file.name;
-    final path =
-        'chats/$chatId/users/$senderId/files/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: path,
-      );
-      final sent = await Get.find<IMessageRepository>().sendMessage(
-        chatId: chatId,
-        senderId: senderId,
-        type: _mapMessageTypeToData(MessageType.file),
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-      );
-      await Get.find<IChatRepository>().updateLastMessage(
-        chatId: chatId,
-        message: sent,
-      );
-      unawaited(stopTyping(chatId));
-    } catch (e) {
-      AppLogger.e('sendFile failed', e);
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.file,
+      folder: 'files',
+      replyToMessageId: replyToMessageId,
+    );
   }
 
   Future<void> sendAudio({
@@ -458,35 +488,13 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (AppConfig.useMockData || chatId.isEmpty) return;
     final senderId = _getUserId();
     if (senderId == null) return;
-    final fileName = file.name;
-    final path =
-        'chats/$chatId/users/$senderId/audio/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    try {
-      _setLoading(true);
-      final (url, size) = await StorageService.instance.uploadFile(
-        file: file,
-        path: path,
-      );
-      final dataMsg = data_msg_models.Message(
-        id: const Uuid().v4(),
-        localId: const Uuid().v4(),
-        chatId: chatId,
-        senderId: senderId,
-        type: data_msg_models.MessageType.audio,
-        mediaUrl: url,
-        mediaSize: size,
-        replyToMessageId: replyToMessageId,
-        status: data_msg_models.MessageStatus.pending,
-        createdAt: DateTime.now(),
-      );
-
-      await _syncEngine.enqueueMessage(dataMsg);
-      unawaited(stopTyping(chatId));
-    } catch (e) {
-      debugPrint('sendAudio failed: $e');
-    } finally {
-      _setLoading(false);
-    }
+    await _enqueueBackgroundUpload(
+      chatId: chatId,
+      file: file,
+      type: MessageType.audio,
+      folder: 'audio',
+      replyToMessageId: replyToMessageId,
+    );
   }
 
   // --- Thumbnails & Stickers helpers (future-proof) ---
@@ -500,13 +508,28 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     final senderId = _getUserId();
     if (senderId == null) return '';
     final fileName = file.name;
-    final path =
-        'chats/$chatId/users/$senderId/thumbnails/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final localId = const Uuid().v4();
+    final path = _getSafeStoragePath(
+      chatId: chatId,
+      userId: senderId,
+      folder: 'thumbnails',
+      originalFileName: fileName,
+      messageId: localId,
+    );
     try {
       _setLoading(true);
       final (url, _) = await StorageService.instance.uploadFile(
         file: file,
         path: path,
+        logContext: {
+          'messageId': localId,
+          'taskId': localId,
+          'originalFileName': fileName,
+          'fileName': fileName,
+          'localPath': file.path,
+          'currentStatus': 'uploading',
+          'retryCount': 1,
+        },
       );
       // 5. Success Moment Trigger (Activation)
       if (!_hasSentFirstMessage.value) {
@@ -534,13 +557,28 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (AppConfig.useMockData || chatId.isEmpty || bytes.isEmpty) return '';
     final senderId = _getUserId();
     if (senderId == null) return '';
-    final path =
-        'chats/$chatId/users/$senderId/thumbnails/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final localId = const Uuid().v4();
+    final path = _getSafeStoragePath(
+      chatId: chatId,
+      userId: senderId,
+      folder: 'thumbnails',
+      originalFileName: fileName,
+      messageId: localId,
+    );
     try {
       _setLoading(true);
       final urlSize = await StorageService.instance.uploadBytes(
         bytes: bytes,
         path: path,
+        logContext: {
+          'messageId': localId,
+          'taskId': localId,
+          'originalFileName': fileName,
+          'fileName': fileName,
+          'localPath': 'bytes',
+          'currentStatus': 'uploading',
+          'retryCount': 1,
+        },
       );
       return urlSize.$1; // url
     } catch (e) {
@@ -565,13 +603,28 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     final senderId = _getUserId();
     if (senderId == null) return;
     final fileName = file.name;
-    final path =
-        'chats/$chatId/users/$senderId/stickers/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final localId = const Uuid().v4();
+    final path = _getSafeStoragePath(
+      chatId: chatId,
+      userId: senderId,
+      folder: 'stickers',
+      originalFileName: fileName,
+      messageId: localId,
+    );
     try {
       _setLoading(true);
       final (url, size) = await StorageService.instance.uploadFile(
         file: file,
         path: path,
+        logContext: {
+          'messageId': localId,
+          'taskId': localId,
+          'originalFileName': fileName,
+          'fileName': fileName,
+          'localPath': file.path,
+          'currentStatus': 'uploading',
+          'retryCount': 1,
+        },
       );
       final sent = await Get.find<IMessageRepository>().sendMessage(
         type: _mapMessageTypeToData(MessageType.image),
@@ -588,6 +641,8 @@ class ChatController extends GetxController with WidgetsBindingObserver {
       unawaited(stopTyping(chatId));
     } catch (e) {
       debugPrint('sendStickerFile failed: $e');
+    } finally {
+      _setLoading(false);
     }
   }
 
@@ -603,16 +658,31 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     }
     if (AppConfig.useMockData) return;
     final senderId = Get.find<AuthController>().userId;
-    final path =
-        'chats/$chatId/users/$senderId/stickers/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final localId = const Uuid().v4();
+    final path = _getSafeStoragePath(
+      chatId: chatId,
+      userId: senderId,
+      folder: 'stickers',
+      originalFileName: fileName,
+      messageId: localId,
+    );
     try {
       final (url, size) = await StorageService.instance.uploadBytes(
         bytes: bytes,
         path: path,
+        logContext: {
+          'messageId': localId,
+          'taskId': localId,
+          'originalFileName': fileName,
+          'fileName': fileName,
+          'localPath': 'bytes',
+          'currentStatus': 'uploading',
+          'retryCount': 1,
+        },
       );
       final dataMsg = data_msg_models.Message(
         id: const Uuid().v4(),
-        localId: const Uuid().v4(),
+        localId: localId,
         chatId: chatId,
         senderId: senderId,
         type: data_msg_models.MessageType.image,
@@ -1077,9 +1147,92 @@ class ChatController extends GetxController with WidgetsBindingObserver {
   }
 
   MessageModel _mapMessageFromData(data_msg_models.Message m) {
-    // Build metadata map for UI rendering (media/reactions/etc.)
+    // 1. Get unified media state if available (try both id and localId)
+    final messageId = m.localId ?? m.id;
+    var mediaState = MediaStateStore.to.getState(messageId) ??
+        MediaStateStore.to.getState(m.id);
+
+    // 2. For media messages without state, seed from data message fields
+    final isMediaMessage = m.type != data_msg_models.MessageType.text &&
+        m.type != data_msg_models.MessageType.system &&
+        m.type != data_msg_models.MessageType.chat &&
+        m.type != data_msg_models.MessageType.call;
+
+    if (isMediaMessage && mediaState == null) {
+      final localPath = m.localFilePath ?? m.reactions?['localFilePath'];
+      final remoteUrl = m.mediaUrl;
+      final fileName = m.originalFileName ??
+          m.reactions?['originalFileName'] ??
+          m.reactions?['filename'] ??
+          (remoteUrl != null ? extractFileName(remoteUrl) : null) ??
+          (localPath != null ? extractFileName(localPath) : null);
+      final localThumb = m.reactions?['localThumbnailPath'];
+
+      // Determine media type string
+      String mediaTypeStr;
+      switch (m.type) {
+        case data_msg_models.MessageType.image:
+          mediaTypeStr = 'image';
+          break;
+        case data_msg_models.MessageType.video:
+          mediaTypeStr = 'video';
+          break;
+        case data_msg_models.MessageType.audio:
+          mediaTypeStr = 'audio';
+          break;
+        default:
+          mediaTypeStr = 'file';
+      }
+
+      // Determine upload status from message status
+      MediaUploadStatus seedStatus;
+      switch (m.status) {
+        case data_msg_models.MessageStatus.pending:
+        case data_msg_models.MessageStatus.uploading:
+          seedStatus = MediaUploadStatus.uploading;
+          break;
+        case data_msg_models.MessageStatus.uploaded:
+          seedStatus = MediaUploadStatus.uploaded;
+          break;
+        case data_msg_models.MessageStatus.sent:
+        case data_msg_models.MessageStatus.delivered:
+        case data_msg_models.MessageStatus.read:
+          seedStatus = remoteUrl != null
+              ? MediaUploadStatus.synced
+              : MediaUploadStatus.uploaded;
+          break;
+        case data_msg_models.MessageStatus.failed:
+          seedStatus = MediaUploadStatus.failed;
+          break;
+      }
+
+      final seededState = MediaState(
+        messageId: messageId,
+        localPath: localPath,
+        remoteUrl: remoteUrl,
+        uploadStatus: seedStatus,
+        fileName: fileName,
+        mediaType: mediaTypeStr,
+        thumbnailPath: localThumb,
+      );
+      // Seed synchronously to in-memory map, persist async
+      MediaStateStore.to.updateState(seededState);
+      mediaState = seededState;
+      debugPrint(
+          '🌱 [ChatController] MEDIA_STATE_SEEDED: messageId=$messageId from data message');
+    }
+
+    // Build metadata map for UI rendering (non-media fields only)
     final md = <String, dynamic>{};
-    if (m.mediaUrl != null) md['mediaUrl'] = m.mediaUrl;
+
+    // Map status from MediaStateStore if it's a media message and we have state
+    MessageStatus effectiveStatus = _mapMessageStatusFromData(m.status);
+    if (mediaState != null) {
+      effectiveStatus =
+          _mapStatusFromMediaState(mediaState.uploadStatus, effectiveStatus);
+    }
+
+    // Only non-media metadata fields - mediaUrl must NOT be in metadata
     if (m.thumbnailUrl != null) md['thumbnailUrl'] = m.thumbnailUrl;
     if (m.mediaSize != null) md['mediaSize'] = m.mediaSize;
     if (m.reactions != null) md['reactions'] = m.reactions;
@@ -1088,19 +1241,116 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (m.deletedFor != null) md['deletedFor'] = m.deletedFor;
     if (m.editedAt != null) md['editedAt'] = m.editedAt!.toIso8601String();
 
+    debugPrint(
+        '🔍 [ChatController] UPLOAD_MAPPING_CHECK: messageId=${m.id}, localId=${m.localId}, status=$effectiveStatus, hasMediaState=${mediaState != null}');
+
+    // Source filename priority:
+    // 1. MediaState fileName (authoritative)
+    // 2. originalFileName from reactions
+    // 3. filename from reactions
+    // 4. Extract from mediaUrl or localPath
+    final effectiveFileName = mediaState?.fileName ??
+        m.originalFileName ??
+        m.reactions?['originalFileName'] ??
+        m.reactions?['filename'] ??
+        (m.mediaUrl != null ? extractFileName(m.mediaUrl!) : null) ??
+        'ملف';
+
     return MessageModel(
       id: m.id,
       chatId: m.chatId,
       senderId: m.senderId,
-      content: m.text ?? '',
+      content: effectiveFileName,
       type: _mapMessageTypeFromData(m.type),
-      status: _mapMessageStatusFromData(m.status),
+      status: effectiveStatus,
       timestamp: m.createdAt,
       replyToMessageId: m.replyToMessageId,
       metadata: md.isEmpty ? null : md,
       userReactions: m.reactions ?? {},
       reactionCounts: m.reactionCounts ?? {},
+      localFilePath: mediaState?.localPath ?? m.localFilePath,
+      originalFileName: effectiveFileName,
+      localThumbnailPath: mediaState?.thumbnailPath ?? m.reactions?['localThumbnailPath'],
+      uploadProgress: mediaState?.lastKnownProgress ?? 0.0,
     );
+  }
+
+  MessageStatus _mapStatusFromMediaState(
+      MediaUploadStatus status, MessageStatus fallback) {
+    switch (status) {
+      case MediaUploadStatus.local:
+        return MessageStatus.pending;
+      case MediaUploadStatus.queued:
+      case MediaUploadStatus.uploading:
+        return MessageStatus.uploading;
+      case MediaUploadStatus.uploaded:
+        return MessageStatus.uploaded;
+      case MediaUploadStatus.synced:
+        return MessageStatus.sent;
+      case MediaUploadStatus.failed:
+        return MessageStatus.failed;
+      case MediaUploadStatus.cancelled:
+        return MessageStatus.failed; // Or cancelled if we add it
+    }
+  }
+
+  String _getSafeStoragePath({
+    required String chatId,
+    required String userId,
+    required String folder,
+    required String originalFileName,
+    required String messageId,
+  }) {
+    final rawExt = p.extension(originalFileName).toLowerCase();
+    final ext = rawExt.replaceAll(RegExp(r'[^a-z0-9.]'), '');
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final safeName = '${timestamp}_$messageId$ext';
+    final storageKey = 'chats/$chatId/users/$userId/$folder/$safeName';
+
+    // Log STORAGE_KEY_GENERATED
+    ForensicLogger.log(
+      tag: 'STORAGE_KEY_GENERATED',
+      messageId: messageId,
+      localId: messageId,
+      taskId: messageId,
+      originalFileName: originalFileName,
+      generatedStorageKey: storageKey,
+      fileExtension: ext,
+      status: 'generated',
+    );
+
+    // Validate STORAGE_KEY_VALIDATED
+    final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(storageKey);
+    final hasSpace = storageKey.contains(' ');
+    final isSafe = !hasArabic && !hasSpace;
+
+    ForensicLogger.log(
+      tag: 'STORAGE_KEY_VALIDATED',
+      messageId: messageId,
+      localId: messageId,
+      taskId: messageId,
+      originalFileName: originalFileName,
+      generatedStorageKey: storageKey,
+      fileExtension: ext,
+      status: isSafe ? 'valid' : 'invalid',
+    );
+
+    return storageKey;
+  }
+
+  static String extractFileName(String path) {
+    if (path.isEmpty) return 'ملف';
+    try {
+      final uri = Uri.parse(path);
+      final segments = uri.pathSegments;
+      if (segments.isNotEmpty) {
+        final last = segments.last;
+        if (last.isNotEmpty) return last;
+      }
+      return path.split('/').last.split('\\').last;
+    } catch (_) {
+      return path.split('/').last.split('\\').last;
+    }
   }
 
   data_msg_models.MessageType _mapMessageTypeToData(MessageType t) {
@@ -1152,6 +1402,10 @@ class ChatController extends GetxController with WidgetsBindingObserver {
 
   MessageStatus _mapMessageStatusFromData(data_msg_models.MessageStatus s) {
     switch (s) {
+      case data_msg_models.MessageStatus.uploading:
+        return MessageStatus.uploading;
+      case data_msg_models.MessageStatus.uploaded:
+        return MessageStatus.uploaded;
       case data_msg_models.MessageStatus.pending:
         return MessageStatus.pending;
       case data_msg_models.MessageStatus.sent:
@@ -1196,6 +1450,10 @@ class ChatController extends GetxController with WidgetsBindingObserver {
   static MessageStatus mapMessageStatusFromData(
       data_msg_models.MessageStatus s) {
     switch (s) {
+      case data_msg_models.MessageStatus.uploading:
+        return MessageStatus.uploading;
+      case data_msg_models.MessageStatus.uploaded:
+        return MessageStatus.uploaded;
       case data_msg_models.MessageStatus.pending:
         return MessageStatus.pending;
       case data_msg_models.MessageStatus.sent:
@@ -1509,14 +1767,19 @@ class ChatController extends GetxController with WidgetsBindingObserver {
 
         return Stream.value(null).delay(const Duration(seconds: 3));
       },
-    );
+    ).startWith(<data_msg_models.Message>[]);
     final localStream = _localRepo.watchChatMessages(chatId);
+    final mediaStateStream = MediaStateStore.to.statesStream;
 
-    final sub = rx_dart.Rx.combineLatest2<List<data_msg_models.Message>,
-            List<data_msg_models.Message>, List<MessageModel>>(
+    final sub = rx_dart.Rx.combineLatest3<
+            List<data_msg_models.Message>,
+            List<data_msg_models.Message>,
+            Map<String, MediaState>,
+            List<MessageModel>>(
       remoteStream,
       localStream,
-      (remoteBatch, localBatch) {
+      mediaStateStream,
+      (remoteBatch, localBatch, mediaStates) {
         // 1. Map remote messages
         final mappedRemote = remoteBatch.map(_mapMessageFromData).toList();
 
@@ -1527,13 +1790,29 @@ class ChatController extends GetxController with WidgetsBindingObserver {
 
         final pendingMessages = localBatch
             .where((m) {
-              // Keep if it's pending/failed, or if neither its ID nor localId is in the remote batch
-              final isPending =
+              final messageId = m.localId ?? m.id;
+              final hasMediaState = mediaStates.containsKey(messageId);
+
+              // Keep if it's pending/uploading/uploaded/failed, OR if it has a MediaState,
+              // OR if neither its ID nor localId is in the remote batch
+              final isPendingStatus =
                   m.status == data_msg_models.MessageStatus.pending ||
+                      m.status == data_msg_models.MessageStatus.uploading ||
+                      m.status == data_msg_models.MessageStatus.uploaded ||
                       m.status == data_msg_models.MessageStatus.failed;
+
               final notInRemote =
                   !serverIds.contains(m.id) && !localIds.contains(m.localId);
-              return isPending || notInRemote;
+
+              final shouldShow =
+                  isPendingStatus || hasMediaState || notInRemote;
+
+              if (shouldShow && !serverIds.contains(m.id)) {
+                debugPrint(
+                    '🔍 [ChatController] CHAT_FILTER_DECISION: messageId=$messageId, status=${m.status}, hasMediaState=$hasMediaState, notInRemote=$notInRemote, shouldShow=$shouldShow');
+              }
+
+              return shouldShow;
             })
             .map(_mapMessageFromData)
             .toList();
@@ -1549,6 +1828,17 @@ class ChatController extends GetxController with WidgetsBindingObserver {
             trailing: true, leading: true)
         .listen((combinedMsgs) {
       _chatMessages[chatId] = combinedMsgs;
+      
+      // Add forensic logging for media message reconstruction (VIDEO_TRACE_CHAT_REBUILD)
+      for (final msg in combinedMsgs) {
+        if (msg.isVideoMessage || msg.isImageMessage || msg.isAudioMessage || msg.isFileMessage) {
+          debugPrint('VIDEO_TRACE_CHAT_REBUILD: messageId=${msg.id}, fileName=${msg.content}, localPath=${msg.localFilePath}, mediaUrl=${msg.metadata?["mediaUrl"]}, status=${msg.status.name}, mediaType=${msg.type.name}');
+        }
+      }
+
+      // Rebuild MediaStateStore index to seed any missing media states
+      // This ensures media survives restart even if SQLite state was lost
+      MediaStateStore.to.rebuildIndex(combinedMsgs);
 
       // [Stage S2] Trigger Receive Sound
       if (combinedMsgs.isNotEmpty) {

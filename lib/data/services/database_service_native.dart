@@ -21,7 +21,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -41,6 +41,27 @@ CREATE TABLE local_sync_actions (
       await db.execute(
           'CREATE INDEX idx_sync_actions_created ON local_sync_actions(created_at)');
     }
+    
+    // Migration V3: Add media tracking fields (VIDEO_TRACE_DB_SAVE)
+    if (oldVersion < 3) {
+      try {
+        // Check if columns already exist before adding them
+        final columns = await db.rawQuery('PRAGMA table_info(local_messages)');
+        final columnNames = (columns as List).map((col) => col['name'] as String).toList();
+        
+        if (!columnNames.contains('local_file_path')) {
+          await db.execute('ALTER TABLE local_messages ADD COLUMN local_file_path TEXT');
+        }
+        if (!columnNames.contains('original_file_name')) {
+          await db.execute('ALTER TABLE local_messages ADD COLUMN original_file_name TEXT');
+        }
+        if (!columnNames.contains('upload_progress')) {
+          await db.execute('ALTER TABLE local_messages ADD COLUMN upload_progress REAL DEFAULT 0.0');
+        }
+      } catch (e) {
+        // Columns might already exist, silently continue
+      }
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -59,7 +80,10 @@ CREATE TABLE local_messages (
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   reply_to_message_id TEXT,
-  metadata TEXT
+  metadata TEXT,
+  local_file_path TEXT,
+  original_file_name TEXT,
+  upload_progress REAL DEFAULT 0.0
 )
 ''');
 

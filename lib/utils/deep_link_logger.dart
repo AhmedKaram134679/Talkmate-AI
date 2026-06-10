@@ -10,7 +10,6 @@ import 'package:intl/intl.dart';
 /// DeepLinkLogger.logUri(uri);
 /// DeepLinkLogger.logException('CONTEXT', exception);
 class DeepLinkLogger {
-  static const String _logFileName = 'talkmate_deeplink.log';
   static late File _logFile;
   static bool _initialized = false;
 

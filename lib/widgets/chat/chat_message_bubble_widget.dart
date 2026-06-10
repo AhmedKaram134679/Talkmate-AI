@@ -28,7 +28,7 @@ class ChatMessageBubble extends StatelessWidget {
   final TextSpan Function(String, Color,
       {TextStyle? style, Color? highlightColor}) buildHighlightedText;
   final String Function(DateTime) formatTime;
-  final Future<void> Function(String) openUrl;
+  final Future<void> Function(String url, String messageId, String chatId) openUrl;
   final String Function(String) inferFileName;
   final String Function(int) formatBytes;
 
@@ -283,6 +283,18 @@ class ChatMessageBubble extends StatelessWidget {
     IconData icon;
     Color color = Colors.white70;
     switch (status) {
+      case MessageStatus.local:
+        icon = Icons.schedule;
+        color = Colors.orangeAccent;
+        break;
+      case MessageStatus.uploading:
+        icon = Icons.cloud_upload;
+        color = Colors.blueAccent;
+        break;
+      case MessageStatus.uploaded:
+        icon = Icons.cloud_done;
+        color = Colors.blueAccent;
+        break;
       case MessageStatus.pending:
         icon = Icons.access_time_rounded;
         break;

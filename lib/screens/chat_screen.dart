@@ -20,8 +20,8 @@ import 'package:talkmate_ai/controllers/rooms_controller.dart';
 import 'package:talkmate_ai/core/app_brain/assimilation/engine/sovereign_invitation_service.dart';
 import 'package:talkmate_ai/core/app_brain/assimilation/models/comm_invitation_model.dart';
 import 'package:talkmate_ai/data/models/user_model.dart' as data_user_models;
-// Phase 4: last seen updates via repository
 import 'package:talkmate_ai/data/repositories/contracts/i_user_repository.dart';
+import 'package:talkmate_ai/data/services/media_file_service.dart';
 import 'package:talkmate_ai/localization/app_localizations.dart';
 import 'package:talkmate_ai/models/chat_model.dart';
 import 'package:talkmate_ai/models/message_model.dart';
@@ -39,7 +39,6 @@ import 'package:talkmate_ai/widgets/communication/sovereign_comm_entry_sheet.dar
 import 'package:talkmate_ai/widgets/emoji_picker_widget.dart';
 import 'package:talkmate_ai/widgets/notifications/in_app_notification_indicator.dart';
 import 'package:talkmate_ai/widgets/reply_message_widget.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatModel chat;
@@ -2425,18 +2424,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // Helpers: open URL externally
-  Future<void> _openUrl(String url) async {
+  Future<void> _openUrl(String url, String messageId, String chatId) async {
     try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          Get.snackbar(AppLocalizations.of(context).openLinkLabel,
-              AppLocalizations.of(context).openLinkError,
-              snackPosition: SnackPosition.BOTTOM);
-        }
-      }
+      debugPrint('📂 [ChatScreen] FILE_OPEN_CLICK: messageId=$messageId');
+      await MediaFileService.instance.openFile(
+        url: url,
+        messageId: messageId,
+        chatId: chatId,
+      );
     } catch (e) {
       debugPrint('openUrl failed: $e');
       if (mounted) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/models/message_model.dart';
@@ -45,7 +46,13 @@ class LocalMessageRepository implements ILocalMessageRepository {
         'reply_to_message_id': message.replyToMessageId,
         'metadata':
             message.reactions != null ? jsonEncode(message.reactions) : null,
+        // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_DB_SAVE)
+        'local_file_path': message.localFilePath,
+        'original_file_name': message.originalFileName,
+        'upload_progress': message.uploadProgress,
       };
+
+      debugPrint('VIDEO_TRACE_DB_SAVE: messageId=${message.id}, localId=${message.localId}, fileName=${message.originalFileName}, filePath=${message.localFilePath}, status=${message.status.name}, mediaType=${message.type.name}');
 
       await db.insert(
         'local_messages',
@@ -92,8 +99,12 @@ class LocalMessageRepository implements ILocalMessageRepository {
     final db = await _dbService.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'local_messages',
-      where: 'status = ? OR status = ?',
-      whereArgs: [MessageStatus.pending.name, MessageStatus.failed.name],
+      where: 'status = ? OR status = ? OR status = ?',
+      whereArgs: [
+        MessageStatus.pending.name,
+        MessageStatus.failed.name,
+        MessageStatus.uploaded.name,
+      ],
       orderBy: 'created_at ASC',
     );
 
@@ -180,30 +191,33 @@ class LocalMessageRepository implements ILocalMessageRepository {
   }
 
   Message _mapToMessage(Map<String, dynamic> map) {
-    // Map SQLite schema back to Message model
-    return Message(
-      id: map['id']?.toString() ?? map['local_id'].toString(),
-      localId: map['local_id'].toString(),
-      chatId: map['chat_id'].toString(),
-      senderId: map['sender_id'].toString(),
-      type: MessageType.values.firstWhere(
-        (e) => e.name == map['type'],
-        orElse: () => MessageType.text,
-      ),
-      text: map['content']?.toString(),
-      mediaUrl: map['media_url']?.toString(),
-      thumbnailUrl: map['thumbnail_url']?.toString(),
+    final message = Message(
+      id: map['id'] as String? ?? map['local_id'] as String,
+      chatId: map['chat_id'] as String,
+      senderId: map['sender_id'] as String,
+      type: MessageType.values.firstWhere((e) => e.name == map['type']),
+      text: map['content'] as String?,
+      mediaUrl: map['media_url'] as String?,
+      thumbnailUrl: map['thumbnail_url'] as String?,
       mediaSize: map['media_size'] as int?,
-      status: MessageStatus.values.firstWhere(
-        (e) => e.name == map['status'],
-        orElse: () => MessageStatus.sent,
-      ),
-      createdAt: DateTime.parse(map['created_at'].toString()),
-      replyToMessageId: map['reply_to_message_id']?.toString(),
+      status: MessageStatus.values.firstWhere((e) => e.name == map['status']),
+      createdAt: DateTime.parse(map['created_at'] as String),
+      localId: map['local_id'] as String?,
+      replyToMessageId: map['reply_to_message_id'] as String?,
       reactions: map['metadata'] != null
           ? Map<String, String>.from(jsonDecode(map['metadata']))
           : null,
+      // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_DB_LOAD)
+      localFilePath: map['local_file_path'] as String?,
+      originalFileName: map['original_file_name'] as String?,
+      uploadProgress: map['upload_progress'] != null 
+          ? double.tryParse(map['upload_progress'].toString()) ?? 0.0 
+          : 0.0,
     );
+    
+    debugPrint('VIDEO_TRACE_DB_LOAD: messageId=${message.id}, localId=${message.localId}, fileName=${message.originalFileName}, filePath=${message.localFilePath}, status=${message.status.name}, mediaType=${message.type.name}');
+    
+    return message;
   }
 
   @override

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:talkmate_ai/localization/app_localizations.dart';
 import 'package:talkmate_ai/utils/error_messages.dart';
 
 /// Reset password screen accessible via Deep Link: talkmate://auth/reset-password
@@ -78,11 +77,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     try {
       debugPrint('🔄 Attempting PKCE code exchange with code: ${code.substring(0, 8)}...');
       
-      // Verify Supabase is ready
-      if (_supabase == null || _supabase.auth == null) {
-        throw Exception('Supabase not initialized - cannot exchange recovery code');
-      }
-      
       // Exchange code for session
       await _supabase.auth.exchangeCodeForSession(code);
       debugPrint('✅ PKCE code exchange successful');
@@ -105,10 +99,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   /// Verify that user has an active recovery session
   Future<void> _checkSession() async {
     try {
-      if (_supabase == null || _supabase.auth == null) {
-        throw Exception('Supabase not initialized');
-      }
-      
       final session = _supabase.auth.currentSession;
       if (session == null) {
         // Create a fake AuthApiException-like error for message mapping
@@ -258,9 +248,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reset Password'),

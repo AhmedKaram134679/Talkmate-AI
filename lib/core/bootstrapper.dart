@@ -36,6 +36,7 @@ import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/di/data_bindings.dart';
 import 'package:talkmate_ai/data/services/badge_service.dart';
 import 'package:talkmate_ai/data/services/firebase_service.dart';
+import 'package:talkmate_ai/data/services/media_services.dart';
 import 'package:talkmate_ai/data/services/messaging_service.dart';
 import 'package:talkmate_ai/data/services/presence_service.dart';
 import 'package:talkmate_ai/data/services/supabase_service.dart';
@@ -137,6 +138,7 @@ class AppBootstrapper {
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       await windowManager.ensureInitialized();
+      await windowManager.setPreventClose(true);
       final WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),
         center: true, // Keep center for initial show, maximize happens after
@@ -165,6 +167,15 @@ class AppBootstrapper {
     // 7. Initialize Supabase (New Backend)
     final supabaseService = SupabaseService();
     await supabaseService.initialize();
+
+    // 7.01 Initialize Media Services System
+    final mediaInitializer = MediaServicesInitializer();
+    await mediaInitializer.initialize();
+    Get.put<MediaServicesInitializer>(mediaInitializer, permanent: true);
+    Get.put<BackgroundUploadService>(mediaInitializer.backgroundUpload, permanent: true);
+    Get.put<MediaCacheManager>(mediaInitializer.cacheManager, permanent: true);
+    Get.put<AudioQueueManager>(mediaInitializer.audioQueue, permanent: true);
+    Get.put<VoicePlaybackController>(VoicePlaybackController(), permanent: true);
 
     // 7.05 Initialize Platform Background Services (Stage R25)
     CallForegroundService.init();

@@ -16,6 +16,7 @@ import 'package:talkmate_ai/core/communication/communication_session.dart';
 import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/models/call_model.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_call_repository.dart';
+import 'package:talkmate_ai/data/services/media_services.dart';
 import 'package:talkmate_ai/services/audio/app_audio_service.dart';
 import 'package:talkmate_ai/services/call/foreground_service.dart';
 import 'package:window_manager/window_manager.dart';
@@ -94,7 +95,29 @@ class CallManager extends GetxService
   @override
   Future<void> onWindowClose() async {
     debugPrint('📞 CallManager: Window closed by user. Cleaning up...');
+    
+    // Stop and dispose the voice queue player
+    if (Get.isRegistered<VoicePlaybackController>()) {
+      try {
+        await Get.find<VoicePlaybackController>().stopPlayback();
+        Get.find<VoicePlaybackController>().onClose();
+      } catch (e) {
+        debugPrint('Error stopping voice playback on exit: $e');
+      }
+    }
+    
+    // Stop and dispose general audio players
+    try {
+      await AppAudioService.instance.stopAll();
+      await AppAudioService.instance.resetAll();
+    } catch (e) {
+      debugPrint('Error resetting AppAudioService on exit: $e');
+    }
+    
     await terminateCall(securityContext: currentSession.value?.id);
+    
+    // Destroy window cleanly
+    await windowManager.destroy();
   }
 
   Future<void> _checkCallIntent() async {
@@ -681,7 +704,7 @@ class CallManager extends GetxService
       if (stillOnCall) {
         debugPrint(
             '📞 CallManager: Navigation stack exhausted or still on call screen ($current). Force returning to /main.');
-        unawaited(Get.offAllNamed(_auth.isLoggedIn ? '/main' : '/login'));
+        Get.offAllNamed(_auth.isLoggedIn ? '/main' : '/login')?.ignore();
       }
     }
 
@@ -785,9 +808,9 @@ class CallManager extends GetxService
       if (Get.currentRoute == route) return;
 
       if (isOff) {
-        unawaited(Get.offNamed(route, arguments: arguments));
+        Get.offNamed(route, arguments: arguments)?.ignore();
       } else {
-        unawaited(Get.toNamed(route, arguments: arguments));
+        Get.toNamed(route, arguments: arguments)?.ignore();
       }
     } else {
       debugPrint(

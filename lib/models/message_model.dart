@@ -29,7 +29,16 @@ enum MessageType {
   call
 }
 
-enum MessageStatus { pending, sent, delivered, read, failed }
+enum MessageStatus { 
+  local,        // Message created locally, not uploaded
+  uploading,    // Upload in progress
+  uploaded,     // Upload completed, ready to send
+  pending,      // Sending to server
+  sent,         // Received by server
+  delivered,    // Delivered to recipient
+  read,         // Read by recipient
+  failed        // Upload or send failed
+}
 
 /// يمثل رسالة معروضة في الواجهة UI مع بيانات تساعد على التقديم والتفاعل.
 class MessageModel {
@@ -51,6 +60,16 @@ class MessageModel {
   final Map<String, String> userReactions;
   final Map<String, int> reactionCounts;
   final Set<String> syncingReactions;
+  
+  // Media upload tracking fields (Phase 2)
+  final String? localFilePath;
+  final String? cachedFilePath;
+  final String? localThumbnailPath;
+  final String? originalFileName;
+  final double uploadProgress;
+  final int retryCount;
+  final DateTime? lastRetryTime;
+  final bool isCached;
 
   MessageModel({
     String? id,
@@ -71,6 +90,15 @@ class MessageModel {
     this.userReactions = const {},
     this.reactionCounts = const {},
     this.syncingReactions = const {},
+    // Media upload tracking
+    this.localFilePath,
+    this.cachedFilePath,
+    this.localThumbnailPath,
+    this.originalFileName,
+    this.uploadProgress = 0.0,
+    this.retryCount = 0,
+    this.lastRetryTime,
+    this.isCached = false,
   })  : id = id ?? const Uuid().v4(),
         timestamp = timestamp ?? DateTime.now();
 
@@ -126,6 +154,17 @@ class MessageModel {
               ?.map((e) => e as String)
               .toSet() ??
           {},
+      // Media upload tracking - backward compatible
+      localFilePath: json['localFilePath'] as String?,
+      cachedFilePath: json['cachedFilePath'] as String?,
+      localThumbnailPath: json['localThumbnailPath'] as String?,
+      originalFileName: json['originalFileName'] as String?,
+      uploadProgress: (json['uploadProgress'] as num?)?.toDouble() ?? 0.0,
+      retryCount: json['retryCount'] as int? ?? 0,
+      lastRetryTime: json['lastRetryTime'] != null
+          ? DateTime.parse(json['lastRetryTime'] as String)
+          : null,
+      isCached: json['isCached'] as bool? ?? false,
     );
   }
 
@@ -149,6 +188,15 @@ class MessageModel {
       'attachments': attachments,
       'userReactions': userReactions,
       'reactionCounts': reactionCounts,
+      // Media upload tracking
+      'localFilePath': localFilePath,
+      'cachedFilePath': cachedFilePath,
+      'localThumbnailPath': localThumbnailPath,
+      'originalFileName': originalFileName,
+      'uploadProgress': uploadProgress,
+      'retryCount': retryCount,
+      'lastRetryTime': lastRetryTime?.toIso8601String(),
+      'isCached': isCached,
     };
   }
 
@@ -167,6 +215,14 @@ class MessageModel {
     Map<String, String>? userReactions,
     Map<String, int>? reactionCounts,
     Set<String>? syncingReactions,
+    String? localFilePath,
+    String? cachedFilePath,
+    String? localThumbnailPath,
+    String? originalFileName,
+    double? uploadProgress,
+    int? retryCount,
+    DateTime? lastRetryTime,
+    bool? isCached,
   }) {
     return MessageModel(
       id: id,
@@ -187,6 +243,15 @@ class MessageModel {
       userReactions: userReactions ?? this.userReactions,
       reactionCounts: reactionCounts ?? this.reactionCounts,
       syncingReactions: syncingReactions ?? this.syncingReactions,
+      // Media upload tracking
+      localFilePath: localFilePath ?? this.localFilePath,
+      cachedFilePath: cachedFilePath ?? this.cachedFilePath,
+      localThumbnailPath: localThumbnailPath ?? this.localThumbnailPath,
+      originalFileName: originalFileName ?? this.originalFileName,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
+      retryCount: retryCount ?? this.retryCount,
+      lastRetryTime: lastRetryTime ?? this.lastRetryTime,
+      isCached: isCached ?? this.isCached,
     );
   }
 
@@ -199,6 +264,9 @@ class MessageModel {
   bool get isLocationMessage => type == MessageType.location;
   bool get isContactMessage => type == MessageType.contact;
 
+  bool get isLocal => status == MessageStatus.local;
+  bool get isUploading => status == MessageStatus.uploading;
+  bool get isUploaded => status == MessageStatus.uploaded;
   bool get isPending => status == MessageStatus.pending;
   bool get isSent => status == MessageStatus.sent;
   bool get isDelivered => status == MessageStatus.delivered;
@@ -207,6 +275,8 @@ class MessageModel {
 
   bool get hasAttachments => attachments != null && attachments!.isNotEmpty;
   bool get isReply => replyToMessageId != null;
+  bool get hasLocalFile => localFilePath != null && localFilePath!.isNotEmpty;
+  bool get hasCachedFile => cachedFilePath != null && cachedFilePath!.isNotEmpty;
 
   String getTypeText(AppLocalizations l10n) {
     switch (type) {
@@ -233,6 +303,12 @@ class MessageModel {
 
   String getStatusText(AppLocalizations l10n) {
     switch (status) {
+      case MessageStatus.local:
+        return l10n.msgStatusPending;
+      case MessageStatus.uploading:
+        return 'جاري الرفع...';
+      case MessageStatus.uploaded:
+        return 'تم الرفع';
       case MessageStatus.pending:
         return l10n.msgStatusPending;
       case MessageStatus.sent:

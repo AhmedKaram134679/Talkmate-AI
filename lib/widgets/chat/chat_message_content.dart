@@ -1,7 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:talkmate_ai/controllers/chat_controller.dart';
+import 'package:talkmate_ai/data/models/media_state_model.dart';
+import 'package:talkmate_ai/data/services/media_state_store.dart';
+import 'package:talkmate_ai/models/message_model.dart';
+import 'package:talkmate_ai/screens/media_gallery_screen.dart';
+import 'package:talkmate_ai/utils/forensic_logger.dart';
 
 import '../../localization/app_localizations.dart';
-import '../../models/message_model.dart';
 import '../voice_message_bubble.dart';
 
 class ChatMessageContent extends StatelessWidget {
@@ -12,7 +19,8 @@ class ChatMessageContent extends StatelessWidget {
       {TextStyle? style, Color? highlightColor}) buildHighlightedText;
   final String firstUrl;
   final Widget Function(String, bool) buildLinkPreview;
-  final Future<void> Function(String) openUrl;
+  final Future<void> Function(String url, String messageId, String chatId)
+      openUrl;
   final String Function(String) inferFileName;
   final String Function(int) formatBytes;
 
@@ -68,33 +76,42 @@ class ChatMessageContent extends StatelessWidget {
       );
     }
 
+    // Resolve Media strictly from store (pass message for auto-seeding fallback)
+    final media =
+        MediaStateStore.to.resolveForMessage(message.id, message: message);
+
     // Audio bubble
-    if (message.isAudioMessage && message.metadata?['mediaUrl'] != null) {
+    final isAudio = message.isAudioMessage && media.isAvailable;
+    if (isAudio) {
       return VoiceMessageBubble(
-        url: message.metadata!['mediaUrl'] as String,
+        message: message,
         isMe: isMe,
       );
     }
 
     // Image bubble
-    if (message.isImageMessage && message.metadata?['mediaUrl'] != null) {
-      final url = message.metadata!['mediaUrl'] as String;
-      final thumb = message.metadata?['thumbnailUrl'] as String?;
-      return _buildImageWidget(
-          context, thumb?.isNotEmpty == true ? thumb! : url, isMe, l10n);
+    final isImage = message.isImageMessage &&
+        (media.isAvailable ||
+            media.status == MediaUploadStatus.uploading ||
+            media.status == MediaUploadStatus.failed);
+    if (isImage) {
+      return _buildImageWidget(context, media, isMe, l10n);
     }
 
     // Video bubble
-    if (message.isVideoMessage && message.metadata?['mediaUrl'] != null) {
-      final url = message.metadata!['mediaUrl'] as String;
-      final thumb = message.metadata?['thumbnailUrl'] as String?;
-      return _buildVideoWidget(context, url, thumb, isMe);
+    final isVideo = message.isVideoMessage;
+    if (isVideo) {
+      return _buildVideoWidget(context, media, isMe);
     }
 
     // File bubble
-    if (message.isFileMessage && message.metadata?['mediaUrl'] != null) {
-      return _buildFileWidget(context, message.metadata!['mediaUrl'] as String,
-          message.metadata?['mediaSize'] as int?, isMe, l10n);
+    final isFile = message.isFileMessage &&
+        (media.isAvailable ||
+            media.status == MediaUploadStatus.uploading ||
+            media.status == MediaUploadStatus.failed);
+    if (isFile) {
+      return _buildFileWidget(
+          context, media, message.metadata?['mediaSize'] as int?, isMe, l10n);
     }
 
     // Fallback: Text
@@ -125,29 +142,139 @@ class ChatMessageContent extends StatelessWidget {
     );
   }
 
-  Widget _buildImageWidget(
-      BuildContext context, String url, bool isMe, AppLocalizations l10n) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.6,
-          maxHeight: 260,
-        ),
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (c, e, s) => _buildErrorState(
-              context, isMe, l10n.imageLoadError, Icons.broken_image),
+  Widget _buildImageWidget(BuildContext context, ResolvedMedia media, bool isMe,
+      AppLocalizations l10n) {
+    Widget imageWidget;
+    if (media.hasLocalFile) {
+      imageWidget = Image.file(
+        File(media.localPath!),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => media.remoteUrl != null
+            ? Image.network(media.remoteUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (c, e, s) => _buildErrorState(
+                    context, isMe, l10n.imageLoadError, Icons.broken_image))
+            : _buildErrorState(
+                context, isMe, l10n.imageLoadError, Icons.broken_image),
+      );
+    } else if (media.remoteUrl != null) {
+      imageWidget = Image.network(
+        media.remoteUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => _buildErrorState(
+            context, isMe, l10n.imageLoadError, Icons.broken_image),
+      );
+    } else {
+      imageWidget = _buildErrorState(
+          context, isMe, l10n.imageLoadError, Icons.broken_image);
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (media.status == MediaUploadStatus.uploading) return;
+        final chatController = Get.find<ChatController>();
+        final messages = chatController.getMessages(message.chatId);
+        final mediaMessages = MediaGalleryDataSource.getMediaMessages(messages);
+        final index =
+            MediaGalleryDataSource.getMediaIndex(messages, message.id);
+        if (index >= 0) {
+          Get.to(() => MediaGalleryScreen(
+                images: mediaMessages,
+                initialIndex: index,
+              ));
+        }
+      },
+      child: Hero(
+        tag: message.id,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.6,
+              maxHeight: 260,
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                imageWidget,
+                if (media.status == MediaUploadStatus.uploading)
+                  Container(
+                    color: Colors.black38,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        value: media.progress > 0 ? media.progress : null,
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
+                if (media.status == MediaUploadStatus.failed)
+                  Container(
+                    color: Colors.black45,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: Colors.redAccent, size: 36),
+                          SizedBox(height: 4),
+                          Text(
+                            'فشل الرفع',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildVideoWidget(
-      BuildContext context, String url, String? thumb, bool isMe) {
+      BuildContext context, ResolvedMedia media, bool isMe) {
+    final localThumb = media.thumbnailPath;
+    final remoteThumb = message.metadata?['thumbnailUrl'] as String?;
+
+    Widget imageWidget;
+    if (localThumb != null && localThumb.isNotEmpty && File(localThumb).existsSync()) {
+      imageWidget = Image.file(
+        File(localThumb),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => _buildVideoPlaceholder(remoteThumb),
+      );
+    } else {
+      imageWidget = _buildVideoPlaceholder(remoteThumb);
+    }
+
+    // Forensic logging for card rendering
+    ForensicLogger.log(
+      tag: 'VIDEO_UI_REBUILT',
+      messageId: message.id,
+      localId: message.id,
+      chatId: message.chatId,
+      filename: media.fileName ?? message.originalFileName,
+      localFilePath: media.localPath ?? message.localFilePath,
+      thumbnailPath: localThumb,
+      remoteUrl: media.remoteUrl,
+      status: media.status.name,
+      uploadProgress: media.progress,
+    );
+
     return GestureDetector(
-      onTap: () => openUrl(url),
+      onTap: () {
+        if (media.status == MediaUploadStatus.uploading ||
+            media.status == MediaUploadStatus.queued) {
+          return;
+        }
+        final url = media.remoteUrl ?? media.localPath ?? '';
+        if (url.isNotEmpty) {
+          openUrl(url, message.id, message.chatId);
+        }
+      },
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -158,32 +285,107 @@ class ChatMessageContent extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.6,
                 maxHeight: 260,
               ),
-              child: thumb != null && thumb.isNotEmpty
-                  ? Image.network(
-                      thumb,
-                      fit: BoxFit.cover,
-                      errorBuilder: (c, e, s) =>
-                          _buildErrorPlaceholder(Icons.videocam_off),
-                    )
-                  : _buildErrorPlaceholder(Icons.videocam),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned.fill(child: imageWidget),
+                  if (media.status == MediaUploadStatus.uploading ||
+                      media.status == MediaUploadStatus.queued)
+                    Container(
+                      color: Colors.black38,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: media.progress > 0 ? media.progress : null,
+                          strokeWidth: 3,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                    ),
+                  if (media.status == MediaUploadStatus.failed)
+                    Container(
+                      color: Colors.black45,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline,
+                                color: Colors.redAccent, size: 36),
+                            SizedBox(height: 4),
+                            const Text(
+                              'فشل الرفع',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Sleek filename overlay at the bottom
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Colors.black87, Colors.transparent],
+                        ),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+                      child: Text(
+                        media.fileName ?? message.originalFileName ?? 'فيديو',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.35),
-              shape: BoxShape.circle,
-            ),
-            padding: const EdgeInsets.all(10),
-            child: const Icon(Icons.play_arrow, size: 36, color: Colors.white),
-          )
+          if (media.status != MediaUploadStatus.uploading &&
+              media.status != MediaUploadStatus.queued &&
+              media.status != MediaUploadStatus.failed)
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(10),
+              child:
+                  const Icon(Icons.play_arrow, size: 36, color: Colors.white),
+            )
         ],
       ),
     );
   }
 
-  Widget _buildFileWidget(BuildContext context, String url, int? size,
+  Widget _buildVideoPlaceholder(String? remoteThumb) {
+    if (remoteThumb != null && remoteThumb.isNotEmpty) {
+      return Image.network(
+        remoteThumb,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => _buildErrorPlaceholder(Icons.videocam_off),
+      );
+    }
+    return _buildErrorPlaceholder(Icons.videocam);
+  }
+
+  Widget _buildFileWidget(BuildContext context, ResolvedMedia media, int? size,
       bool isMe, AppLocalizations l10n) {
-    final fileName = inferFileName(url);
+    // Priority: Metadata name > Resolved filename > Fallback
+    final fileName = message.userReactions['originalFileName'] ??
+        message.userReactions['filename'] ??
+        media.fileName ??
+        'ملف';
     final onColor =
         isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
     return Container(
@@ -217,11 +419,29 @@ class ChatMessageContent extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          IconButton(
-            tooltip: l10n.openOrDownload,
-            icon: Icon(Icons.download, color: onColor),
-            onPressed: () => openUrl(url),
-          ),
+          if (media.status == MediaUploadStatus.uploading)
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                value: media.progress > 0 ? media.progress : null,
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(onColor),
+              ),
+            )
+          else if (media.status == MediaUploadStatus.failed)
+            Icon(Icons.error_outline, color: Colors.redAccent, size: 24)
+          else
+            IconButton(
+              tooltip: l10n.openOrDownload,
+              icon: Icon(Icons.download, color: onColor),
+              onPressed: () {
+                final url = media.remoteUrl ?? media.localPath ?? '';
+                if (url.isNotEmpty) {
+                  openUrl(url, message.id, message.chatId);
+                }
+              },
+            ),
         ],
       ),
     );

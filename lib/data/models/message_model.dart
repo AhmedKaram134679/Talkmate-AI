@@ -11,7 +11,7 @@ enum MessageType {
   contact
 }
 
-enum MessageStatus { pending, sent, delivered, read, failed }
+enum MessageStatus { pending, sent, delivered, read, failed, uploading, uploaded }
 
 class Message {
   final String id;
@@ -33,6 +33,11 @@ class Message {
       localId; // Client-generated ID for idempotency and offline tracking
   final String? replyToMessageId;
   final String? deletedByName;
+  
+  // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_*)
+  final String? localFilePath;
+  final String? originalFileName;
+  final double uploadProgress;
 
   const Message({
     required this.id,
@@ -53,6 +58,9 @@ class Message {
     this.localId,
     this.replyToMessageId,
     this.deletedByName,
+    this.localFilePath,
+    this.originalFileName,
+    this.uploadProgress = 0.0,
   });
 
   factory Message.fromJson(Map<String, dynamic> json, String docId) {
@@ -125,6 +133,10 @@ class Message {
       localId: json['local_id']?.toString(),
       replyToMessageId: json['reply_to_message_id']?.toString(),
       deletedByName: json['deleted_by_name']?.toString(),
+      // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_DB_LOAD)
+      localFilePath: json['local_file_path']?.toString() ?? json['localFilePath']?.toString(),
+      originalFileName: json['original_file_name']?.toString() ?? json['originalFileName']?.toString(),
+      uploadProgress: json['upload_progress'] != null ? double.tryParse(json['upload_progress'].toString()) ?? 0.0 : 0.0,
     );
   }
 
@@ -146,6 +158,10 @@ class Message {
       'local_id': localId,
       'reply_to_message_id': replyToMessageId,
       'deleted_by_name': deletedByName,
+      // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_DB_SAVE)
+      'local_file_path': localFilePath,
+      'original_file_name': originalFileName,
+      'upload_progress': uploadProgress,
     }..removeWhere((k, v) => v == null);
   }
 
@@ -168,6 +184,9 @@ class Message {
     String? localId,
     String? replyToMessageId,
     String? deletedByName,
+    String? localFilePath,
+    String? originalFileName,
+    double? uploadProgress,
   }) {
     return Message(
       id: id ?? this.id,
@@ -188,6 +207,10 @@ class Message {
       localId: localId ?? this.localId,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       deletedByName: deletedByName ?? this.deletedByName,
+      // Media tracking fields - CRITICAL for upload persistence (VIDEO_TRACE_*)
+      localFilePath: localFilePath ?? this.localFilePath,
+      originalFileName: originalFileName ?? this.originalFileName,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
     );
   }
 }
