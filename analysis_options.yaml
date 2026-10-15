@@ -13,6 +13,13 @@ analyzer:
     # (Previously only the example app was excluded, so vendored library code
     # still failed `flutter analyze` in CI on an info-level lint.)
     - third_party/**
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
   errors:
     avoid_dynamic_calls: ignore
 include: package:flutter_lints/flutter.yaml
