@@ -6,7 +6,6 @@ import 'package:talkmate_ai/data/models/media_state_model.dart';
 import 'package:talkmate_ai/data/services/media_state_store.dart';
 import 'package:talkmate_ai/models/message_model.dart';
 import 'package:talkmate_ai/screens/media_gallery_screen.dart';
-import 'package:talkmate_ai/utils/forensic_logger.dart';
 
 import '../../localization/app_localizations.dart';
 import '../voice_message_bubble.dart';
@@ -190,7 +189,7 @@ class ChatMessageContent extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.6,
+              maxWidth: (MediaQuery.of(context).size.width * 0.6).clamp(200.0, 420.0),
               maxHeight: 260,
             ),
             child: Stack(
@@ -240,7 +239,7 @@ class ChatMessageContent extends StatelessWidget {
     final remoteThumb = message.metadata?['thumbnailUrl'] as String?;
 
     Widget imageWidget;
-    if (localThumb != null && localThumb.isNotEmpty && File(localThumb).existsSync()) {
+    if (localThumb != null && localThumb.isNotEmpty) {
       imageWidget = Image.file(
         File(localThumb),
         fit: BoxFit.cover,
@@ -249,20 +248,6 @@ class ChatMessageContent extends StatelessWidget {
     } else {
       imageWidget = _buildVideoPlaceholder(remoteThumb);
     }
-
-    // Forensic logging for card rendering
-    ForensicLogger.log(
-      tag: 'VIDEO_UI_REBUILT',
-      messageId: message.id,
-      localId: message.id,
-      chatId: message.chatId,
-      filename: media.fileName ?? message.originalFileName,
-      localFilePath: media.localPath ?? message.localFilePath,
-      thumbnailPath: localThumb,
-      remoteUrl: media.remoteUrl,
-      status: media.status.name,
-      uploadProgress: media.progress,
-    );
 
     return GestureDetector(
       onTap: () {
@@ -282,7 +267,7 @@ class ChatMessageContent extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.6,
+                maxWidth: (MediaQuery.of(context).size.width * 0.6).clamp(200.0, 420.0),
                 maxHeight: 260,
               ),
               child: Stack(
@@ -389,8 +374,9 @@ class ChatMessageContent extends StatelessWidget {
     final onColor =
         isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
     return Container(
-      constraints:
-          BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+      constraints: BoxConstraints(
+          maxWidth:
+              (MediaQuery.of(context).size.width * 0.7).clamp(240.0, 480.0)),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: onColor.withValues(alpha: 0.06),

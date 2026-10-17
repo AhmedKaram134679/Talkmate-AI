@@ -608,20 +608,24 @@ class UploadManager {
     try {
       final failedUploads = await _db.getFailedUploads();
       final failed = failedUploads.firstWhere(
-        (row) => row['message_id'] == messageId,
+        (row) => row['message_id'] == messageId || row['id'] == messageId,
         orElse: () => <String, dynamic>{},
       );
 
       if (failed.isNotEmpty) {
+        final localFilePath = failed['file_path'] as String? ?? '';
+        final file = File(localFilePath);
+        final fileSizeBytes = file.existsSync() ? await file.length() : 0;
+
         final task = UploadTask(
           taskId: failed['id'] as String? ?? messageId,
           messageId: failed['message_id'] as String? ?? messageId,
-          chatId: '',
-          userId: '',
-          localFilePath: failed['file_path'] as String? ?? '',
-          uploadPath: '',
-          mediaType: 'unknown',
-          fileSizeBytes: 0,
+          chatId: failed['chat_id'] as String? ?? '',
+          userId: failed['user_id'] as String? ?? '',
+          localFilePath: localFilePath,
+          uploadPath: failed['upload_path'] as String? ?? '',
+          mediaType: failed['media_type'] as String? ?? 'unknown',
+          fileSizeBytes: fileSizeBytes,
           attemptCount: 0,
         );
 
@@ -632,7 +636,7 @@ class UploadManager {
         uploadStatusMap[messageId] = RxString('uploading');
 
         processQueue().ignore();
-        debugPrint('🔄 [UploadManager] Retry initiated for: $messageId');
+        debugPrint('🔄 [UploadManager] Retry initiated for: $messageId (uploadPath: ${task.uploadPath})');
       }
     } catch (e, st) {
       debugPrint('❌ [UploadManager] Failed to retry upload: $e');

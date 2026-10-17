@@ -134,18 +134,24 @@ class AppConfig {
   static const String vapidPublicKey =
       'BLF3jQJLlWRgo1f-mJGfsYsIRBmVHXxJudHwlJi4iwU9lDFHOBsJeFLIyDuewZ3YHDetmH48_RvTtBoRmzG_NNQ';
 
-  /// Central detector for stale sessions or network timeouts in Supabase Realtime
+  /// Central detector for stale sessions in Supabase Realtime / Auth
+  /// Specifically targets expired tokens and authentication/session drops,
+  /// without over-suppressing generic network timeouts or critical connection drops.
   static bool isStaleSessionError(Object? error) {
     if (error == null) return false;
     final errStr = error.toString().toLowerCase();
-    return errStr.contains('jwt') ||
-        errStr.contains('expired') ||
-        errStr.contains('unauthorized') ||
-        errStr.contains('401') ||
-        errStr.contains('channelerror') ||
-        errStr.contains('timedout') ||
-        errStr.contains('handshake') ||
-        errStr.contains('connection closed') ||
-        errStr.contains('terminated during handshake');
+
+    // Must be auth/JWT session expiration or token rejection
+    final isAuthStale = (errStr.contains('jwt') && (errStr.contains('expired') || errStr.contains('invalid') || errStr.contains('claim'))) ||
+        (errStr.contains('unauthorized') && (errStr.contains('401') || errStr.contains('auth'))) ||
+        errStr.contains('token has expired') ||
+        errStr.contains('invalid refresh token') ||
+        errStr.contains('session from storage has expired');
+
+    // Supabase realtime channel auth drop
+    final isRealtimeAuthDrop = errStr.contains('channelerror') &&
+        (errStr.contains('access token') || errStr.contains('unauthorized') || errStr.contains('jwt'));
+
+    return isAuthStale || isRealtimeAuthDrop;
   }
 }

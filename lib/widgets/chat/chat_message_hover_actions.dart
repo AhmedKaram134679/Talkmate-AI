@@ -35,10 +35,11 @@ class _ChatMessageHoverActionsState extends State<ChatMessageHoverActions> {
         children: [
           widget.child,
           if (_isHovered)
-            Positioned(
+            Positioned.directional(
+              textDirection: Directionality.of(context),
               top: -20,
-              right: widget.isMe ? null : 0,
-              left: widget.isMe ? 0 : null,
+              start: widget.isMe ? 0 : null,
+              end: widget.isMe ? null : 0,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(

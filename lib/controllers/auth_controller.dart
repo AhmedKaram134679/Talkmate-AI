@@ -70,25 +70,30 @@ class AuthController extends GetxController {
     String? displayName,
     String? about,
     String? photoUrl,
-    bool? isEmailVerified,
     UserStatus? status,
   }) async {
     try {
       _isLoading.value = true;
-      final repo = Get.find<IUserRepository>();
-      final currentUser = await repo.getById(_userId.value);
-      if (currentUser != null) {
-        final updated = currentUser.copyWith(
-          displayName: displayName,
-          about: about,
-          photoUrl: photoUrl,
-          status: status,
-        );
-        await repo.upsertUser(updated);
-        // Update local state
-        _userName.value = updated.displayName ?? '';
-        _userPhoto.value = updated.photoUrl ?? '';
+      final currentSessionUser = _authService.currentUser;
+      if (currentSessionUser == null || currentSessionUser.id != _userId.value) {
+        throw StateError('Unauthorized profile update attempt.');
       }
+
+      final repo = Get.find<IUserRepository>();
+      await repo.updateProfile(
+        _userId.value,
+        displayName: displayName,
+        about: about,
+        photoUrl: photoUrl,
+      );
+
+      if (status != null) {
+        await repo.updateStatus(_userId.value, status);
+      }
+
+      // Update local state safely
+      if (displayName != null) _userName.value = displayName;
+      if (photoUrl != null) _userPhoto.value = photoUrl;
     } catch (e) {
       Get.snackbar('خطأ', 'تعذر تحديث الملف الشخصي: $e');
     } finally {
@@ -139,7 +144,10 @@ class AuthController extends GetxController {
         _userEmail.value = user.email ?? '';
         _userName.value = user.userMetadata?['username'] ?? '';
         _userPhoto.value = user.userMetadata?['avatar_url'] ?? '';
+        // Real Supabase verification check: emailConfirmedAt is null if unverified
+        needsEmailVerification.value = user.emailConfirmedAt == null && (user.email != null && user.email!.isNotEmpty);
       } else {
+        needsEmailVerification.value = false;
         _isLoggedIn.value = false;
         _userId.value = '';
         _userEmail.value = '';
@@ -376,6 +384,37 @@ class AuthController extends GetxController {
 
   Future<void> logout() async {
     await _authService.signOut();
+  }
+
+  Future<void> deleteAccount({required String password}) async {
+    try {
+      _isLoading.value = true;
+      final email = _userEmail.value;
+      if (email.isNotEmpty && password.isNotEmpty) {
+        // Re-authenticate to verify identity before deletion
+        await _authService.signIn(email: email, password: password);
+      }
+
+      // Invoke Supabase RPC to delete user account securely
+      await Supabase.instance.client.rpc('delete_user_account');
+
+      // Clear local caches and state
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      // Sign out and transition state
+      await logout();
+
+      _userId.value = '';
+      _userName.value = '';
+      _userEmail.value = '';
+      _userPhoto.value = '';
+      _isLoggedIn.value = false;
+
+      await Get.offAllNamed('/auth/login');
+    } finally {
+      _isLoading.value = false;
+    }
   }
 
   Future<void> resetPassword(String email) async {

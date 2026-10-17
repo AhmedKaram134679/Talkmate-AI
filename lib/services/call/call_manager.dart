@@ -94,8 +94,71 @@ class CallManager extends GetxService
 
   @override
   Future<void> onWindowClose() async {
-    debugPrint('📞 CallManager: Window closed by user. Cleaning up...');
-    
+    debugPrint('📞 CallManager: Window close event intercepted.');
+
+    // [W6]: Window close confirmation during active calls
+    final bool hasActiveCall = currentSession.value != null &&
+        (callStatus.value == CallStatus.ongoing ||
+            callStatus.value == CallStatus.ringing ||
+            callStatus.value == CallStatus.accepted);
+
+    bool hasActiveComm = false;
+    if (Get.isRegistered<CommunicationController>()) {
+      final comm = Get.find<CommunicationController>();
+      hasActiveComm = comm.sessionId.value.isNotEmpty &&
+          comm.currentStatus != CommSessionStatus.ended &&
+          comm.currentStatus != CommSessionStatus.idle;
+    }
+
+    if (hasActiveCall || hasActiveComm) {
+      final context = Get.context;
+      if (context != null) {
+        final bool shouldClose = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: const Color(0xFF1E1E2E),
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+                    SizedBox(width: 8),
+                    Text(
+                      'End Active Call?',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    ),
+                  ],
+                ),
+                content: const Text(
+                  'A call is currently in progress. Closing the application will terminate the call for all participants. Are you sure you want to exit?',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('End Call & Exit'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+
+        if (!shouldClose) {
+          debugPrint('📞 CallManager: User cancelled window close during active call.');
+          return;
+        }
+      }
+    }
+
+    debugPrint('📞 CallManager: Proceeding with window close cleanup...');
+
     // Stop and dispose the voice queue player
     if (Get.isRegistered<VoicePlaybackController>()) {
       try {
@@ -105,7 +168,7 @@ class CallManager extends GetxService
         debugPrint('Error stopping voice playback on exit: $e');
       }
     }
-    
+
     // Stop and dispose general audio players
     try {
       await AppAudioService.instance.stopAll();
@@ -113,9 +176,9 @@ class CallManager extends GetxService
     } catch (e) {
       debugPrint('Error resetting AppAudioService on exit: $e');
     }
-    
+
     await terminateCall(securityContext: currentSession.value?.id);
-    
+
     // Destroy window cleanly
     await windowManager.destroy();
   }
@@ -166,6 +229,11 @@ class CallManager extends GetxService
             'isIncoming': isIncoming,
             'isVideo': isVideo,
           });
+
+          // [STAGE A2]: Explicitly clear call intent after consumption
+          try {
+            await channel.invokeMethod('clearCallIntent');
+          } catch (_) {}
         }
       } catch (e) {
         debugPrint('CallManager: Error checking call intent: $e');

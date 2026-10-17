@@ -13,6 +13,7 @@ import 'package:talkmate_ai/services/observability/performance_tracker.dart';
 import '../config/app_config.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
+import '../screens/chat_screen.dart';
 import 'auth_controller.dart';
 import 'chat_controller.dart';
 
@@ -433,43 +434,55 @@ class AppSearchController extends GetxController {
     );
   }
 
-  void selectSearchResult(SearchResult result) {
+  Future<void> selectSearchResult(SearchResult result) async {
     switch (result.type) {
       case SearchType.chats:
         final chat = result.data as ChatModel;
         Get.back(); // Close search screen
-        // Navigate to chat - this would be implemented based on your navigation structure
-        final l10n = AppLocalizations.of(Get.context!);
-        Get.snackbar(
-          l10n.openChatTitle,
-          l10n.openChatWithName(
-              chat.getDisplayName(AppLocalizations.of(Get.context!))),
-          snackPosition: SnackPosition.BOTTOM,
+        await Get.to(
+          () => ChatScreen(chat: chat),
+          transition: Transition.rightToLeft,
+          duration: const Duration(milliseconds: 300),
         );
         break;
 
       case SearchType.messages:
         final message = result.data as MessageModel;
         Get.back(); // Close search screen
-        // Navigate to message in chat
-        final l10n = AppLocalizations.of(Get.context!);
-        Get.snackbar(
-          l10n.goToMessageTitle,
-          l10n.goToMessageBody(message.content),
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        // Find existing chat in controller
+        final chat = ChatController.to.chats.firstWhereOrNull((c) => c.id == message.chatId);
+        if (chat != null) {
+          await Get.to(
+            () => ChatScreen(chat: chat),
+            transition: Transition.rightToLeft,
+            duration: const Duration(milliseconds: 300),
+          );
+        } else {
+          final l10n = AppLocalizations.of(Get.context!);
+          Get.snackbar(
+            l10n.goToMessageTitle,
+            l10n.goToMessageBody(message.content),
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
         break;
 
       case SearchType.users:
         final user = result.data as data_models.AppUser;
         Get.back(); // Close search screen
-        // Show user profile or start chat
-        final l10n = AppLocalizations.of(Get.context!);
-        Get.snackbar(
-          l10n.viewUserTitle,
-          l10n.viewUserProfileWithName(user.displayName ?? user.email),
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        try {
+          final directChat = await ChatController.to.getOrCreateDirectChat(
+            user.id,
+            otherUserName: user.displayName ?? user.email,
+          );
+          await Get.to(
+            () => ChatScreen(chat: directChat),
+            transition: Transition.rightToLeft,
+            duration: const Duration(milliseconds: 300),
+          );
+        } catch (e) {
+          debugPrint('Error opening chat with searched user: $e');
+        }
         break;
 
       case SearchType.all:

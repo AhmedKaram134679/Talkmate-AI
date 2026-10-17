@@ -449,6 +449,9 @@ class _ChatScreenState extends State<ChatScreen> {
         // لا نُظهر Snackbar هنا لتجنّب إزعاج المستخدم — نكتفي بالتسجيل
         debugPrint('update message statuses on open failed: $e');
       }
+
+      // Initial scroll to latest message (U7)
+      _scrollToBottom(animate: false);
     });
 
     // Watch other user's profile for status/lastSeen (individual chats only)
@@ -998,8 +1001,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
           final isCurrent = _isSearching && index == _currentMatchIndex;
 
+          // Bounded pruning for _messageKeys to prevent unmanaged memory growth (P6)
+          if (_messageKeys.length > 200) {
+            final activeIds = messages.map((m) => m.id).toSet();
+            _messageKeys.removeWhere((id, _) => !activeIds.contains(id));
+            if (_messageKeys.length > 200) {
+              final keysToRemove = _messageKeys.keys.take(_messageKeys.length - 150).toList();
+              for (final k in keysToRemove) {
+                _messageKeys.remove(k);
+              }
+            }
+          }
+          final messageKey = _messageKeys.putIfAbsent(message.id, () => GlobalKey());
+
           final content = Column(
-            key: ValueKey(message.id),
+            key: messageKey,
             children: [
               if (showDateSeparator) _buildDateSeparator(message.timestamp),
               ChatMessageBubble(
@@ -1182,6 +1198,22 @@ class _ChatScreenState extends State<ChatScreen> {
       return AppLocalizations.of(context).groupRoleModerator;
     }
     return null;
+  }
+
+  void _scrollToBottom({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final target = _scrollController.position.maxScrollExtent;
+      if (animate) {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(target);
+      }
+    });
   }
 
   void _scrollToMessageId(String messageId) {

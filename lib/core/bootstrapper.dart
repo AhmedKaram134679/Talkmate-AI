@@ -53,6 +53,13 @@ import 'package:window_manager/window_manager.dart';
 /// The central bootstrapper for the application.
 /// Isolates platform-specific startup logic from main.dart.
 class AppBootstrapper {
+  static Timer? _memoryMonitorTimer;
+
+  static void dispose() {
+    _memoryMonitorTimer?.cancel();
+    _memoryMonitorTimer = null;
+  }
+
   static Future<void> init() async {
     WidgetsFlutterBinding.ensureInitialized();
 
@@ -68,6 +75,18 @@ class AppBootstrapper {
             context: {'error': e.toString()});
       }
     }
+
+    // 2. Initialize Platform Database, Storage & Notifications early (P3)
+    final db = getPlatformDatabase();
+    await db.initialize();
+    Get.put<PlatformDatabase>(db, permanent: true);
+
+    final platformStorage = getPlatformStorage();
+    Get.put<IPlatformStorage>(platformStorage, permanent: true);
+
+    final platformNotifications = getPlatformNotifications();
+    await platformNotifications.initialize();
+    Get.put<IPlatformNotifications>(platformNotifications, permanent: true);
 
     Get.put(PerformanceTracker(), permanent: true);
     Get.put(AnalyticsService(), permanent: true);
@@ -99,48 +118,71 @@ class AppBootstrapper {
       // Run security audit early
       unawaited(SecurityGatekeeper.instance.performStartupAudit());
 
-      // Periodically check memory usage in production environment (simulated via Bridge)
-      Timer.periodic(const Duration(minutes: 5), (timer) {
-        // This would typically use a platform-specific plugin to get RSS,
-        // here we use a placeholder that can be hooked to real OS metrics.
-        AppObservability.instance
-            .logMemoryUsage(150 * 1024 * 1024); // Baseline example
+      // Periodically record real memory footprint when available (P4)
+      _memoryMonitorTimer?.cancel();
+      _memoryMonitorTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+        try {
+          final memoryUsage = ProcessInfo.currentRss;
+          if (memoryUsage > 0) {
+            AppObservability.instance.logMemoryUsage(memoryUsage);
+          }
+        } catch (_) {
+          // ProcessInfo might not be supported on all web/sandboxed platforms
+        }
       });
     }
 
-    // 3. Error tracking (Crashlytics)
-    if (AppConfig.enableErrorTracking && FirebaseService.supportsCrashlytics) {
-      FlutterError.onError = (errorDetails) {
-        AppObservability.instance.logCriticalError(
-            'flutter_framework', errorDetails.exception.toString(),
-            stack: errorDetails.stack);
+    // 3. Error tracking (Global framework error handling - W1, P2)
+    FlutterError.onError = (errorDetails) {
+      AppObservability.instance.logCriticalError(
+          'flutter_framework', errorDetails.exception.toString(),
+          stack: errorDetails.stack);
+      AppLogger.error(
+        'Flutter Framework Error: ${errorDetails.exception}',
+        error: errorDetails.exception,
+        stackTrace: errorDetails.stack,
+      );
+      if (AppConfig.enableErrorTracking && FirebaseService.supportsCrashlytics) {
         FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
-      };
-      PlatformDispatcher.instance.onError = (error, stack) {
-        // [RESILIENCE_GUARD]: Ignore Realtime channel errors in the global dispatcher.
-        // These are usually caught and handled (via refresh) by individual services.
-        if (AppConfig.isStaleSessionError(error)) {
-          AppLogger.warning(
-              'PlatformDispatcher: Suppressed non-fatal Realtime error.',
-              context: {'error': error.toString()});
-          return true; // Handled
-        }
+      }
+    };
 
-        AppObservability.instance.logCriticalError(
-            'platform_dispatcher', error.toString(),
-            stack: stack);
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
-    }
+    PlatformDispatcher.instance.onError = (error, stack) {
+      // [RESILIENCE_GUARD]: Ignore Realtime channel stale sessions in the global dispatcher.
+      // These are usually caught and handled (via refresh) by individual services.
+      if (AppConfig.isStaleSessionError(error)) {
+        AppLogger.warning(
+            'PlatformDispatcher: Suppressed non-fatal Realtime session error.',
+            context: {'error': error.toString()});
+        return true; // Handled
+      }
+
+      AppObservability.instance.logCriticalError(
+          'platform_dispatcher', error.toString(),
+          stack: stack);
+      AppLogger.error(
+        'Platform Dispatcher Error: $error',
+        error: error,
+        stackTrace: stack,
+      );
+
+      if (AppConfig.enableErrorTracking && FirebaseService.supportsCrashlytics) {
+        // Asynchronous errors are not automatically fatal; mark fatal only if critical system error
+        final isFatal = error is OutOfMemoryError;
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: isFatal);
+      }
+      return true;
+    };
 
     // 4. Platform-Specific Setup (Desktop)
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       await windowManager.ensureInitialized();
       await windowManager.setPreventClose(true);
+      await windowManager.setMinimumSize(const Size(900, 600));
       final WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),
+        minimumSize: Size(900, 600),
         center: true, // Keep center for initial show, maximize happens after
         backgroundColor:
             null, // Default to system/opaque to avoid transparency issues
@@ -156,15 +198,7 @@ class AppBootstrapper {
       }));
     }
 
-    // 5. Initialize Platform Database (Conditional Import)
-    final db = getPlatformDatabase();
-    await db.initialize();
-
-    // 6. Initialize Notifications & Messaging
-    final platformNotifications = getPlatformNotifications();
-    await platformNotifications.initialize();
-
-    // 7. Initialize Supabase (New Backend)
+    // 5. Initialize Supabase (New Backend)
     final supabaseService = SupabaseService();
     await supabaseService.initialize();
 
@@ -233,18 +267,13 @@ class AppBootstrapper {
     Get.put(BetaFeatureFlagsService(), permanent: true);
     Get.put(SovereignFeedbackService(), permanent: true);
 
-    // 11. Preferred orientations
-    if (!kIsWeb) {
+    // 11. Preferred orientations (Only lock on mobile handsets; allow free resize/rotation on tablets/desktop)
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
     }
-
-    // 12. Inject Platform Interfaces into GetX for injection
-    Get.put<PlatformDatabase>(db, permanent: true);
-    Get.put<IPlatformStorage>(getPlatformStorage(), permanent: true);
-    Get.put<IPlatformNotifications>(platformNotifications, permanent: true);
 
     AppLogger.info(
         'AppBootstrapper: Initialization complete for ${kIsWeb ? "Web" : defaultTargetPlatform.name}');

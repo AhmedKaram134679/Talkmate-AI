@@ -29,6 +29,8 @@ firebase_cpp_sdk_*/
 # Keystores / signing
 *.keystore
 *.jks
+key.properties
+**/key.properties
 
 # iOS / macOS
 ios/Pods/
@@ -44,6 +46,8 @@ google-services.json
 GoogleService-Info.plist
 firebase.json.bak
 *.bak
+.temp/
+**/.temp/
 
 # Archives / big binaries
 *.rar

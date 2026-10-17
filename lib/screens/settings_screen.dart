@@ -509,8 +509,8 @@ class SettingsScreen extends StatelessWidget {
     Get.dialog(
       AlertDialog(
         title: Text(l10n.privacySettings),
-        content: SizedBox(
-          width: 380,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
           child: StreamBuilder<data_models.AppUser?>(
             stream: Get.find<IUserRepository>().watchById(auth.userId),
             builder: (context, AsyncSnapshot<data_models.AppUser?> snapshot) {
@@ -709,27 +709,89 @@ class SettingsScreen extends StatelessWidget {
 
   void _showDeleteAccountDialog(
       BuildContext context, AuthController authController) {
+    final passwordController = TextEditingController();
+    final l10n = AppLocalizations.of(context);
+    final obscurePassword = true.obs;
+
     Get.dialog(
       AlertDialog(
-        title: Text(AppLocalizations.of(Get.context!).deleteAccount),
-        content: Text(AppLocalizations.of(Get.context!).confirmDeleteAccount),
+        title: Text(l10n.deleteAccount),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.confirmDeleteAccount,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 16),
+              Obx(() => TextField(
+                    controller: passwordController,
+                    obscureText: obscurePassword.value,
+                    decoration: InputDecoration(
+                      labelText: l10n.password,
+                      hintText: l10n.pleaseEnterPassword,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscurePassword.value
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed: () =>
+                            obscurePassword.value = !obscurePassword.value,
+                      ),
+                    ),
+                  )),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Get.back(),
-              child: Text(AppLocalizations.of(Get.context!).cancel)),
-          TextButton(
-            onPressed: () {
-              Get.back();
-              Get.snackbar(
-                AppLocalizations.of(Get.context!).deleteAccount,
-                AppLocalizations.of(Get.context!).comingSoon,
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
-              );
+            onPressed: () => Get.back(),
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final pwd = passwordController.text.trim();
+              if (pwd.isEmpty) {
+                Get.snackbar(
+                  l10n.error,
+                  l10n.pleaseEnterPassword,
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
+                return;
+              }
+
+              Get.back(); // Dismiss dialog
+              try {
+                await authController.deleteAccount(password: pwd);
+                Get.snackbar(
+                  l10n.deleteAccount,
+                  l10n.deleteAccount,
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.green,
+                  colorText: Colors.white,
+                );
+              } catch (e) {
+                Get.snackbar(
+                  l10n.error,
+                  e.toString(),
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
+              }
             },
-            child: Text(AppLocalizations.of(Get.context!).delete,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(l10n.delete),
           ),
         ],
       ),

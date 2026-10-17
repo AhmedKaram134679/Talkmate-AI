@@ -373,16 +373,16 @@ class MediaGalleryScreen extends StatelessWidget {
               children: [
                 Obx(
                   () => IconButton(
-                    icon: Icon(Icons.arrow_back_ios, color: Colors.white),
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
                     onPressed: controller.hasPrevious
                         ? controller.previousImage
                         : null,
                   ),
                 ),
-                Expanded(child: SizedBox()),
+                const Expanded(child: SizedBox()),
                 Obx(
                   () => IconButton(
-                    icon: Icon(Icons.arrow_forward_ios, color: Colors.white),
+                    icon: const Icon(Icons.arrow_forward, color: Colors.white),
                     onPressed: controller.hasNext ? controller.nextImage : null,
                   ),
                 ),

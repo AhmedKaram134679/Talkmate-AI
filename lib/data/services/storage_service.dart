@@ -79,8 +79,16 @@ class StorageService {
             ),
           ).timeout(const Duration(minutes: 5));
 
-      // Get public URL
-      final url = client.storage.from(_bucket).getPublicUrl(path);
+      // Get short-lived signed URL (default 24h) for secure private bucket access, fallback to publicUrl
+      String url;
+      try {
+        url = await client.storage
+            .from(_bucket)
+            .createSignedUrl(path, 60 * 60 * 24);
+      } catch (e) {
+        debugPrint('⚠️ [StorageService] createSignedUrl fallback to getPublicUrl: $e');
+        url = client.storage.from(_bucket).getPublicUrl(path);
+      }
       final size = bytes.length;
 
       debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
@@ -165,8 +173,16 @@ class StorageService {
             ),
           ).timeout(const Duration(minutes: 15)); // Increased timeout for large videos
 
-      // Get public URL
-      final url = client.storage.from(_bucket).getPublicUrl(path);
+      // Get short-lived signed URL (default 24h) for secure private bucket access, fallback to publicUrl
+      String url;
+      try {
+        url = await client.storage
+            .from(_bucket)
+            .createSignedUrl(path, 60 * 60 * 24);
+      } catch (e) {
+        debugPrint('⚠️ [StorageService] createSignedUrl fallback to getPublicUrl: $e');
+        url = client.storage.from(_bucket).getPublicUrl(path);
+      }
 
       debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
 
@@ -206,6 +222,18 @@ class StorageService {
       );
 
       rethrow;
+    }
+  }
+
+  /// Generate a short-lived signed URL for a file in the private talkmate bucket
+  Future<String> getSignedUrl(String path, {int expiresInSeconds = 86400}) async {
+    try {
+      return await _client.storage
+          .from(_bucket)
+          .createSignedUrl(path, expiresInSeconds);
+    } catch (e) {
+      debugPrint('⚠️ [StorageService] getSignedUrl fallback: $e');
+      return _client.storage.from(_bucket).getPublicUrl(path);
     }
   }
 

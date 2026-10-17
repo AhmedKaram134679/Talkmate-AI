@@ -23,17 +23,6 @@ class SecurityGatekeeper extends GetxService {
           'Security: App running in DEBUG mode. Some protections are relaxed.');
     }
 
-    // 2. Check for Tampering (Basic environment check)
-    final bool isTampered = await _detectEnvironmentTampering();
-    if (isTampered) {
-      _reportSecurityIncident(SecuritySignal(
-        type: SecurityThreatType.unauthorizedEnv,
-        risk: SecurityRiskLevel.high,
-        source: 'environment_audit',
-        details: {'env': defaultTargetPlatform.name},
-      ));
-    }
-
     AppLogger.info(
         'Security: Audit Complete. Status: ${isCompromised ? "COMPROMISED" : "SECURE"}');
   }
@@ -48,13 +37,7 @@ class SecurityGatekeeper extends GetxService {
     return true;
   }
 
-  Future<bool> _detectEnvironmentTampering() async {
-    // Placeholder for advanced checks like Root/Jailbreak, Hooking detections
-    // In a real production app, this would use native platform channels.
-    return false;
-  }
-
-  void _reportSecurityIncident(SecuritySignal signal) {
+  void reportSecurityIncident(SecuritySignal signal) {
     AppLogger.critical('SECURITY INCIDENT: ${signal.type.name}',
         context: signal.details);
 

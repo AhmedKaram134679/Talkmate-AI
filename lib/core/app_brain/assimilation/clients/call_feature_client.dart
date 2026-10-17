@@ -40,7 +40,6 @@ import '../engine/silent_ai_moderator_engine.dart';
 import '../engine/sovereign_analytics_manager.dart';
 import '../engine/sovereign_communication_engine.dart';
 import '../engine/sovereign_ethical_identity_engine.dart';
-import '../engine/sovereign_production_manager.dart';
 import '../managers/group_call_manager.dart';
 import '../models/ai_moderation_models.dart';
 import '../models/audio_presence_models.dart';
@@ -90,7 +89,6 @@ class CallFeatureClient extends GetxService
   final _governance = Get.put(SelfGovernanceEngine());
   final _symbiosis = Get.put(HumanSovereignSymbiosisEngine());
   final _ethics = Get.put(SovereignEthicalIdentityEngine());
-  final _deployment = Get.put(SovereignProductionManager());
 
   @override
   String get featureId => 'multimedia_system_v1';
@@ -106,6 +104,7 @@ class CallFeatureClient extends GetxService
 
   final _groupManager = Get.put(GroupCallManager());
   CallSession? _currentSession;
+  Timer? _metricsTimer;
 
   @override
   bool get supportsVideo {
@@ -227,58 +226,34 @@ class CallFeatureClient extends GetxService
       }
     });
 
-    // Simulated Production Metrics Ticker
-    Timer.periodic(const Duration(seconds: 10), (timer) {
-      if (_currentSession != null) {
-        final metrics = TechnicalMetrics(
-          cpuUsage: 25.0, // Mocked
-          gpuUsage: 10.0,
-          memoryUsageMB: 450,
-          roundTripTimeMs: 45,
-          packetLoss: 0.1,
-          timestamp: DateTime.now(),
-        );
-        _production.pushMetrics(metrics);
-
-        // Stage G17: Feed Sovereign Production Monitor
-        _deployment.monitorProductionState(
-            metrics.cpuUsage, metrics.memoryUsageMB);
-
-        // Stage G13: Push to Sovereign Analytics
-        _analytics.pushDataPoint(SovereignDataPoint(
-          type: AnalyticsMetricType.packetLoss,
-          value: metrics.packetLoss,
-          timestamp: DateTime.now(),
-        ));
-        _analytics.pushDataPoint(SovereignDataPoint(
-          type: AnalyticsMetricType.latency,
-          value: metrics.roundTripTimeMs.toDouble(),
-          timestamp: DateTime.now(),
-        ));
-
-        // Stage G14: Feed the Self-Governance Engine
-        // (Mocking a list of recent metrics for the engine to evaluate)
-        _governance.evaluateGovernance([
-          SovereignDataPoint(
-              type: AnalyticsMetricType.packetLoss,
-              value: metrics.packetLoss,
-              timestamp: DateTime.now()),
-        ]);
-      }
-    });
+    _metricsTimer?.cancel();
+    _metricsTimer = null;
   }
 
   @override
   void handleGlobalEvent(AppBrainEvent event) {
-    // Stage E5: Monitor emergency signals
+    // Stage E5 / B2: Monitor emergency signals
     if (event is SystemEvent && event.type == 'emergency_start') {
-      hardKill();
+      final action = event.metadata['action']?.toString();
+      final reason = event.metadata['value']?.toString() ?? '';
+      
+      // [Stage B2]: Protect ongoing calls from non-multimedia emergency stops (e.g. sync failure).
+      // Only trigger hardKill if the emergency explicitly requires terminating media or security breach.
+      if (action == 'terminate_media' || reason.toLowerCase().contains('security_breach')) {
+        debugPrint('🚨 [CallFeatureClient] Critical security/media emergency: triggering hardKill.');
+        hardKill();
+      } else {
+        debugPrint('🛡️ [CallFeatureClient] Non-fatal emergency signal received ($reason). Preserving active call lifecycle.');
+      }
     }
   }
 
   @override
   Future<void> hardKill() async {
     debugPrint('🛑 MULTIMEDIA HARD KILL ACTIVATED! Purging all resources...');
+
+    _metricsTimer?.cancel();
+    _metricsTimer = null;
 
     // 0. Audio & Video Infrastructure Hard Kill (Stage G1 & G2)
     await _voiceInfrastructure.audioHardKill();
@@ -704,5 +679,12 @@ class CallFeatureClient extends GetxService
         }
       }
     }
+  }
+
+  @override
+  void onClose() {
+    _metricsTimer?.cancel();
+    _metricsTimer = null;
+    super.onClose();
   }
 }

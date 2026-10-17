@@ -6,6 +6,9 @@ import 'package:get/get.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:talkmate_ai/config/app_config.dart';
 import 'package:talkmate_ai/controllers/chat_controller.dart';
+import 'package:talkmate_ai/localization/app_localizations.dart';
+import 'package:talkmate_ai/models/message_model.dart';
+import 'package:talkmate_ai/screens/chat_screen.dart';
 import 'package:talkmate_ai/services/platform/deep_link_queue.dart';
 import 'package:talkmate_ai/utils/deep_link_logger.dart';
 
@@ -295,12 +298,88 @@ class PlatformService extends GetxService {
   }
 
   void _showShareTargetPicker({String? text, List<SharedMediaFile>? files}) {
-    // Logic to show a dialog or screen to select a chat to share the content with
-    Get.snackbar(
-      'مشاركة محتوى',
-      text != null ? 'نص مشترك: $text' : 'ملفات مشتركة: ${files?.length}',
-      backgroundColor: Colors.white,
-      snackPosition: SnackPosition.BOTTOM,
+    final context = Get.context;
+    if (context == null) return;
+    final l10n = AppLocalizations.of(context);
+    final chatController = Get.isRegistered<ChatController>() ? ChatController.to : null;
+    if (chatController == null) return;
+
+    final chats = chatController.chats;
+    if (chats.isEmpty) {
+      Get.snackbar(
+        'مشاركة',
+        'لا توجد محادثات نشطة للمشاركة معها',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('مشاركة'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text != null ? 'إرسال النص إلى:' : 'إرسال الملفات إلى:',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: chats.length,
+                  itemBuilder: (context, index) {
+                    final chat = chats[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        child: Text(chat.getDisplayName(l10n).characters.firstOrNull ?? '?'),
+                      ),
+                      title: Text(
+                        chat.getDisplayName(l10n),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () async {
+                        Get.back(); // Dismiss picker
+                        if (text != null && text.isNotEmpty) {
+                          await chatController.sendMessage(
+                            chatId: chat.id,
+                            content: text,
+                            type: MessageType.text,
+                          );
+                        }
+                        if (files != null && files.isNotEmpty) {
+                          for (final file in files) {
+                            if (file.path.isNotEmpty) {
+                              await chatController.sendMessage(
+                                chatId: chat.id,
+                                content: file.path,
+                                type: MessageType.file,
+                              );
+                            }
+                          }
+                        }
+                        await Get.to(() => ChatScreen(chat: chat));
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text(l10n.cancel),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:talkmate_ai/config/app_config.dart';
 import 'package:talkmate_ai/config/theme_config.dart';
+import 'package:talkmate_ai/controllers/theme_controller.dart';
 import 'package:talkmate_ai/core/app_brain/adaptive/adaptive_controller.dart';
 import 'package:talkmate_ai/data/models/user_model.dart' as data_user;
 import 'package:talkmate_ai/data/repositories/contracts/i_user_repository.dart';
@@ -98,8 +99,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.wb_sunny_outlined),
-            onPressed: () => Get.changeThemeMode(
-                Get.isDarkMode ? ThemeMode.light : ThemeMode.dark),
+            onPressed: () => Get.find<ThemeController>().toggleTheme(),
           ),
           Container(
             margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),

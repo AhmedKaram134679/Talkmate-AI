@@ -1,4 +1,4 @@
-package com.example.talkmate_ai
+package com.talkmate.ai
 
 import android.app.*
 import android.content.Context
@@ -15,6 +15,7 @@ class CallForegroundService : Service() {
         const val ACTION_START_RINGING = "ACTION_START_RINGING"
         const val ACTION_START_ACTIVE_CALL = "ACTION_START_ACTIVE_CALL"
         const val ACTION_STOP_SERVICE = "ACTION_STOP_SERVICE"
+        const val ACTION_DECLINE_CALL = "ACTION_DECLINE_CALL"
 
         private const val CHANNEL_RINGING = "calls_ringing_v1"
         private const val CHANNEL_ACTIVE = "calls_active_v1"
@@ -35,10 +36,16 @@ class CallForegroundService : Service() {
         when (action) {
             ACTION_START_RINGING -> handleStartRinging(callerName, isVideo, callId, senderId)
             ACTION_START_ACTIVE_CALL -> handleStartActive(callerName, isVideo, callId, senderId)
-            ACTION_STOP_SERVICE -> stopSelf()
+            ACTION_DECLINE_CALL, ACTION_STOP_SERVICE -> stopServiceAndRingtone()
         }
 
         return START_NOT_STICKY
+    }
+
+    private fun stopServiceAndRingtone() {
+        RingtoneController.stop()
+        stopForeground(true)
+        stopSelf()
     }
 
     private fun handleStartRinging(callerName: String, isVideo: Boolean, callId: String, senderId: String) {
@@ -52,7 +59,7 @@ class CallForegroundService : Service() {
         
         startForegroundSafe(NOTIFICATION_ID_RINGING, notification)
         
-        // RingtoneController is the SOLE authority.
+        // Ringtone playback
         RingtoneController.start(this)
     }
 
@@ -68,16 +75,13 @@ class CallForegroundService : Service() {
 
         val notification = buildActiveNotification(callerName, isVideo, callId, senderId)
 
-        // [REPAIR P6]: An active call captures the microphone (and the camera for
-        // a video call). On Android 14+ the started FGS type MUST include these,
-        // or the OS blocks mic/camera capture while backgrounded / screen-off.
+        // An active call captures the microphone (and camera for video)
         var activeType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         if (isVideo) {
             activeType = activeType or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         }
 
-        // Switch Foreground Service to Active ID
         startForegroundSafe(NOTIFICATION_ID_ACTIVE, notification, activeType)
     }
 
@@ -116,7 +120,7 @@ class CallForegroundService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ACTIVE,
                 "Active Calls",
-                NotificationManager.IMPORTANCE_DEFAULT // Lower importance for active calls
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Ongoing active call"
                 setSound(null, null)
@@ -130,17 +134,28 @@ class CallForegroundService : Service() {
     }
 
     private fun buildRingingNotification(callerName: String, isVideo: Boolean, callId: String, senderId: String): Notification {
-        val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
+        // Accept action Intent: opens MainActivity with full call info
+        val acceptIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("route", "/call_ringing") 
             putExtra("callId", callId)
             putExtra("otherId", senderId)
             putExtra("isIncoming", true)
             putExtra("isVideo", isVideo)
+            putExtra("action", "accept")
         }
-        
-        val fullScreenPendingIntent = PendingIntent.getActivity(
-            this, 1001, fullScreenIntent,
+        val acceptPendingIntent = PendingIntent.getActivity(
+            this, 1001, acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Decline action Intent: sends stop command to CallForegroundService
+        val declineIntent = Intent(this, CallForegroundService::class.java).apply {
+            action = ACTION_DECLINE_CALL
+            putExtra("call_id", callId)
+        }
+        val declinePendingIntent = PendingIntent.getService(
+            this, 1002, declineIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -150,7 +165,10 @@ class CallForegroundService : Service() {
             .setContentText("$callerName is calling...")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setFullScreenIntent(acceptPendingIntent, true)
+            .setContentIntent(acceptPendingIntent)
+            .addAction(android.R.drawable.ic_menu_call, "Answer", acceptPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePendingIntent)
             .setOngoing(true)
             .setAutoCancel(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -159,16 +177,21 @@ class CallForegroundService : Service() {
 
     private fun buildActiveNotification(callerName: String, isVideo: Boolean, callId: String, senderId: String): Notification {
         val activeIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP // Just bring to front
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        
         val activePendingIntent = PendingIntent.getActivity(
-            this, 1002, activeIntent,
+            this, 1003, activeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action to hang up (communicated via broadcast to Flutter or another service - simplification for now)
-        // For now, tapping notification opens app
+        val endCallIntent = Intent(this, CallForegroundService::class.java).apply {
+            action = ACTION_STOP_SERVICE
+        }
+        val endCallPendingIntent = PendingIntent.getService(
+            this, 1004, endCallIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ACTIVE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Ongoing Call")
@@ -176,7 +199,8 @@ class CallForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setContentIntent(activePendingIntent)
-            .setOngoing(true) // Cannot be swiped away
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End Call", endCallPendingIntent)
+            .setOngoing(true)
             .setUsesChronometer(true)
             .build()
     }

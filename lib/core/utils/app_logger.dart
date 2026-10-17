@@ -8,7 +8,14 @@ enum LogLevel { info, warning, error, critical, brain, ui, security }
 class AppLogger {
   static void _log(LogLevel level, String message,
       {Map<String, dynamic>? context, dynamic error, StackTrace? stackTrace}) {
-    // Production Filter: Only log Warnings and above in Release unless explicitly enabled
+    // Release Mode Filter: Strictly suppress non-critical logs in release mode
+    if (kReleaseMode &&
+        level != LogLevel.error &&
+        level != LogLevel.critical &&
+        level != LogLevel.security) {
+      return;
+    }
+
     if (!kDebugMode &&
         !AppConfig.enableLogging &&
         level != LogLevel.error &&
@@ -31,6 +38,13 @@ class AppLogger {
     if (stackTrace != null) debugPrint('   StackTrace: $stackTrace');
 
     // Integration with Crashlytics or external logging services can be added here
+  }
+
+  /// Safe logger method to replace naked debugPrint throughout the codebase.
+  /// Suppresses all output unconditionally in release mode.
+  static void debug(String message) {
+    if (kReleaseMode) return;
+    debugPrint(message);
   }
 
   static void info(String message, {Map<String, dynamic>? context}) =>
@@ -64,6 +78,8 @@ class AppLogger {
 
   // Legacy compatibility wrappers
   static void d(String message) => info(message);
+  static void i(String message) => info(message);
+  static void w(String message) => warning(message);
   static void e(String message, [dynamic error, StackTrace? stackTrace]) =>
       AppLogger.error(message, error: error, stackTrace: stackTrace);
 }

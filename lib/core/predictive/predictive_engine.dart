@@ -14,16 +14,30 @@ class PredictiveEngine extends GetxService {
 
   final _activeAlarms = <PredictiveAlarm>[].obs;
   List<PredictiveAlarm> get activeAlarms => _activeAlarms;
+  Timer? _forecastTimer;
 
   /// Starts analyzing system health trends
   void startForecasting() {
     AppLogger.info(
         'Predictive: Intelligence Layer Active. Forecasting initialized.');
 
+    // Cancel existing timer before spawning new one
+    _forecastTimer?.cancel();
     // Cycle every minute to analyze trends
-    Timer.periodic(const Duration(minutes: 1), (timer) {
+    _forecastTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
       _analyzeTrends();
     });
+  }
+
+  void stopForecasting() {
+    _forecastTimer?.cancel();
+    _forecastTimer = null;
+  }
+
+  @override
+  void onClose() {
+    stopForecasting();
+    super.onClose();
   }
 
   void _analyzeTrends() {

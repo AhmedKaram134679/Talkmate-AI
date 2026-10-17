@@ -10,6 +10,7 @@ class BadgeService extends GetxService with WidgetsBindingObserver {
 
   RealtimeChannel? _statusChannel;
   bool _isInitialized = false;
+  final RxInt unreadCount = 0.obs;
 
   Future<BadgeService> init() async {
     if (_isInitialized) return this;
@@ -37,9 +38,10 @@ class BadgeService extends GetxService with WidgetsBindingObserver {
           .eq('device_id', deviceId)
           .neq('status', 'read');
 
+      unreadCount.value = count;
       await setBadgeCount(count);
     } catch (e) {
-      debugPrint('BadgeService: Failed to update badge: $e');
+      debugPrint('BadgeService: Failed to update badge from Supabase: $e');
     }
   }
 

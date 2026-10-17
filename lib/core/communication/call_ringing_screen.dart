@@ -75,23 +75,11 @@ class _CallRingingScreenState extends State<CallRingingScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
 
-    // [SOVEREIGN_UI]: Force dark theme for the calling/ringing screen.
-    return Theme(
-      data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blueAccent,
-          surface: Color(0xFF1A1A1A),
-          primaryContainer: Color(0xFF2C2C2C),
-        ),
-      ),
-      child: Builder(builder: (context) {
-        final theme = Theme.of(context);
-
-        return Scaffold(
-          backgroundColor: theme.scaffoldBackgroundColor,
-          body: PopScope(
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, result) async {
               if (didPop) return;
@@ -156,8 +144,6 @@ class _CallRingingScreenState extends State<CallRingingScreen> {
               ),
             ),
           ),
-        );
-      }),
     );
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -94,10 +95,21 @@ class SupabaseUserRepository implements IUserRepository {
   @override
   Future<List<AppUser>> searchByNameOrEmail(String query,
       {int limit = 20, List<String>? userIds}) async {
-    var queryBuilder = _client
-        .from('profiles')
-        .select()
-        .or('username.ilike.%$query%,email.ilike.%$query%');
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return [];
+
+    // Sanitize query to prevent PostgREST filter syntax injection (commas, parens, backslashes)
+    final sanitized = trimmed.replaceAll(RegExp(r'[,().\\]'), '').trim();
+    if (sanitized.isEmpty) return [];
+
+    // If query looks like a specific email address, allow exact case-insensitive match;
+    // otherwise search by username prefix/pattern without exposing all emails to pattern harvesting
+    var queryBuilder = _client.from('profiles').select();
+    if (trimmed.contains('@')) {
+      queryBuilder = queryBuilder.eq('email', trimmed.toLowerCase());
+    } else {
+      queryBuilder = queryBuilder.ilike('username', '%$sanitized%');
+    }
 
     if (userIds != null && userIds.isNotEmpty) {
       queryBuilder = queryBuilder.filter('id', 'in', userIds);
@@ -136,11 +148,16 @@ class SupabaseUserRepository implements IUserRepository {
     String? about,
     String? photoUrl,
   }) async {
+    final currentAuthUser = _client.auth.currentUser;
+    if (currentAuthUser == null || currentAuthUser.id != userId) {
+      throw StateError('Unauthorized: Cannot update profile of another user.');
+    }
+
     await _retry(() async {
       final Map<String, dynamic> data = {};
-      if (displayName != null) data['username'] = displayName;
-      if (about != null) data['about'] = about;
-      if (photoUrl != null) data['avatar_url'] = photoUrl;
+      if (displayName != null) data['username'] = displayName.trim();
+      if (about != null) data['about'] = about.trim();
+      if (photoUrl != null) data['avatar_url'] = photoUrl.trim();
 
       if (data.isNotEmpty) {
         await _client
@@ -181,10 +198,17 @@ class SupabaseUserRepository implements IUserRepository {
   Future<void> updateWebPushSubscription(String userId, String subscriptionJson,
       {String? deviceId}) async {
     await _retry(() async {
-      final sub = Map<String, dynamic>.from(
-          (Uri.decodeFull(subscriptionJson).startsWith('{'))
-              ? (Uri.decodeFull(subscriptionJson)) as dynamic
-              : (subscriptionJson) as dynamic);
+      Map<String, dynamic> sub = {};
+      try {
+        final decodedStr = Uri.decodeFull(subscriptionJson);
+        final parsed = jsonDecode(decodedStr.startsWith('{') ? decodedStr : subscriptionJson);
+        if (parsed is Map) {
+          sub = Map<String, dynamic>.from(parsed);
+        }
+      } catch (e) {
+        debugPrint('SupabaseUserRepository: failed to parse web push subscription JSON ($e)');
+        sub = {'raw': subscriptionJson};
+      }
 
       await _client.from('user_devices').upsert({
         'user_id': userId,

@@ -82,4 +82,18 @@ class AppBrain extends GetxService implements IAppBrain {
       },
     ));
   }
+
+  /// [Stage B2]: Explicit recovery path from emergency state
+  void exitEmergencyMode({String reason = 'system_recovery'}) {
+    AppLogger.i('🧠 EXITING EMERGENCY MODE: $reason');
+    transitionTo(AppSystemState.idle, reason: reason);
+    publish(SystemEvent(
+      source: 'brain',
+      type: 'emergency_stop',
+      metadata: {
+        'action': 'restore_ui',
+        'value': reason,
+      },
+    ));
+  }
 }

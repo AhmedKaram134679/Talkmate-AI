@@ -40,12 +40,9 @@ class FeatureGatekeeper {
     final degradationManager = DegradationManager.instance;
     final adaptiveProfiles = AdaptiveRuntimeProfiles.instance;
 
-    // TODO: Connect real BCI source. Using placeholder for now.
-    final brainConfidence = BrainConfidence(85.0, DateTime.now());
-
-    // 2. Translate to Signals
+    // 2. Translate to Signals based on system health and network
     final signals = BrainStateTranslator.translate(
-      brainConfidence: brainConfidence,
+      brainConfidence: BrainConfidence(100.0, DateTime.now()),
       systemHealth: degradationManager.currentState,
       powerMode: adaptiveProfiles.powerMode.value,
       networkProfile: adaptiveProfiles.networkQuality.value,

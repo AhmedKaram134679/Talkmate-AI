@@ -640,6 +640,36 @@ interface RoutingLogEntry {
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
+  // STRICT CALLER AUTHENTICATION & AUTHORIZATION
+  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.warn("⛔ Unauthorized push-handler request: Missing or invalid Authorization header");
+    return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  let callerRole: string | null = null;
+  let callerUserId: string | null = null;
+
+  if (token === supabaseKey) {
+    callerRole = "service_role";
+  } else {
+    // Verify user JWT with Supabase Auth
+    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !userData?.user) {
+      console.warn("⛔ Unauthorized push-handler request: Invalid JWT", authError);
+      return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    callerRole = userData.user.role || "authenticated";
+    callerUserId = userData.user.id;
+  }
+
   try {
     let payload = await req.json();
     console.log("📦 AI Routing: Received Payload:", payload);
@@ -658,6 +688,36 @@ serve(async (req) => {
     }
 
     const { chat_id, sender_id, message_id, content_type, text_content, priority: payloadPriority, force_fcm, type: payloadType } = payload;
+
+    // Caller Authorization check: If not service_role, verify that caller is permitted for this action
+    if (callerRole !== "service_role") {
+      if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
+        const finalSenderId = sender_id || payload.caller_id;
+        const receiverId = payload.receiver_id;
+        if (callerUserId !== finalSenderId && callerUserId !== receiverId) {
+          console.warn(`⛔ Forbidden: Caller ${callerUserId} tried to initiate call notification for sender ${finalSenderId} / receiver ${receiverId}`);
+          return new Response(JSON.stringify({ error: "Forbidden: Caller does not match sender or receiver" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+      } else if (payloadType === 'room_created') {
+        const creatorId = payload.created_by;
+        if (callerUserId !== creatorId) {
+          console.warn(`⛔ Forbidden: Caller ${callerUserId} does not match room creator ${creatorId}`);
+          return new Response(JSON.stringify({ error: "Forbidden: Caller does not match room creator" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+      } else if (sender_id && callerUserId !== sender_id) {
+        console.warn(`⛔ Forbidden: Caller ${callerUserId} tried to send push for sender ${sender_id}`);
+        return new Response(JSON.stringify({ error: "Forbidden: Caller does not match sender" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
 
     // STAGE R: SPECIALIZED CALL HANDLING (Signaling Constitution)
     if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {

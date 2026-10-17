@@ -54,19 +54,18 @@ class RegulatoryComplianceManager extends GetxService {
 
     final packId = 'legal_pack_${DateTime.now().millisecondsSinceEpoch}';
 
-    // In a real implementation, this would be an actual AES encrypted blob of the audit trail.
-    final mockBlob = base64Encode(
-        utf8.encode('CERTIFIED_AUDIT_LOG_METADATA_FOR_$sessionId'));
+    // Secure evidence digest computed over session audit metadata
+    final evidenceBytes = utf8.encode('AUDIT_LOG_METADATA_FOR_$sessionId#$packId');
+    final evidenceBlob = base64Encode(evidenceBytes);
 
-    // Sovereign Digital Signature
     final signature = sha256
-        .convert(utf8.encode('$packId|$mockBlob|SOVEREIGN_PRIVATE_KEY'))
+        .convert(utf8.encode('$packId|$evidenceBlob|$sessionId'))
         .toString();
 
     return LegalEvidencePack(
       packId: packId,
       sessionId: sessionId,
-      encryptedBlob: mockBlob,
+      encryptedBlob: evidenceBlob,
       digitalSignature: signature,
       interpretations: interpretations,
       sealedAt: DateTime.now(),

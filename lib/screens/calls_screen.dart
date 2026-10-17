@@ -7,6 +7,7 @@ import 'package:talkmate_ai/config/theme_config.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
 import 'package:talkmate_ai/controllers/language_controller.dart';
 import 'package:talkmate_ai/controllers/rooms_controller.dart';
+import 'package:talkmate_ai/controllers/theme_controller.dart';
 import 'package:talkmate_ai/data/models/call_model.dart';
 import 'package:talkmate_ai/data/models/user_model.dart' as user_models;
 import 'package:talkmate_ai/data/repositories/contracts/i_call_repository.dart';
@@ -65,8 +66,7 @@ class _CallsScreenState extends State<CallsScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.wb_sunny_outlined),
-            onPressed: () => Get.changeThemeMode(
-                Get.isDarkMode ? ThemeMode.light : ThemeMode.dark),
+            onPressed: () => Get.find<ThemeController>().toggleTheme(),
           ),
           Container(
             margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),

@@ -41,14 +41,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION public.notify_professional_push()
 RETURNS trigger AS $$
 DECLARE
-  service_role_key TEXT := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljZGJiZnNqYnNsemN0c2h4eXRkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDQyODY2OCwiZXhwIjoyMDk2MDA0NjY4fQ.VmBetxbbIBDF9gxnAKC_cikCXLD66jXao-YR9I_Tm0Y';
+  service_role_key TEXT;
 BEGIN
+  SELECT decrypted_secret INTO service_role_key 
+  FROM vault.decrypted_secrets 
+  WHERE name = 'service_role_key' 
+  LIMIT 1;
+
+  IF service_role_key IS NULL THEN
+    service_role_key := current_setting('app.settings.service_role_key', true);
+  END IF;
+
   PERFORM
     net.http_post(
       url := 'https://icdbbfsjbslzctshxytd.supabase.co/functions/v1/push-handler',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' || service_role_key
+        'Authorization', 'Bearer ' || COALESCE(service_role_key, '')
       ),
       body := jsonb_build_object(
         'type', 'message',

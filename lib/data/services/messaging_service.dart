@@ -17,6 +17,7 @@ import 'package:talkmate_ai/controllers/chat_controller.dart';
 import 'package:talkmate_ai/core/communication/call_notification_manager.dart';
 import 'package:talkmate_ai/core/communication/communication_live_screen.dart';
 import 'package:talkmate_ai/core/communication/communication_session.dart';
+import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/models/chat_model.dart' as data_chat_models;
 import 'package:talkmate_ai/data/repositories/contracts/i_chat_repository.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_notification_repository.dart';
@@ -36,9 +37,11 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   if (AppConfig.enableFirebase) {
     try {
       await FirebaseService.initialize();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warning('fcmBackgroundHandler FirebaseService init warning: $e');
+    }
   }
-  debugPrint('Background message received');
+  AppLogger.debug('Background message received');
   // [STABILIZATION]: Initialize local notifications for the background isolate
   await MessageNotificationHandler._ensureInitialized();
   // [SOVEREIGN]: Emergency bootstrap if this is a call signal
@@ -49,8 +52,8 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
 
   try {
     await NotificationRouter.handle(message.data, source: 'background');
-  } catch (e) {
-    debugPrint('❌ fcmBackgroundHandler internal error: $e');
+  } catch (e, stack) {
+    AppLogger.error('fcmBackgroundHandler internal error: $e', error: e, stackTrace: stack);
   }
 }
 
@@ -72,7 +75,7 @@ class NotificationRouter {
     // 1. Duplicate Protection
     if (messageId != null) {
       if (_processedIds.contains(messageId)) {
-        debugPrint('🛡️ Duplicate notification rejected: $messageId');
+        AppLogger.debug('Duplicate notification rejected: $messageId');
         return;
       }
       _processedIds.add(messageId);
@@ -87,19 +90,21 @@ class NotificationRouter {
       if (sentTime != null) {
         final age = DateTime.now().difference(sentTime);
         if (age > _staleThreshold) {
-          debugPrint(
-              '🛡️ Stale notification suppressed: $messageId (Age: ${age.inHours} hours)');
+          AppLogger.debug(
+              'Stale notification suppressed: $messageId (Age: ${age.inHours} hours)');
           return;
         }
       }
     }
 
-    debugPrint('🔔 Router handling $type from $source');
+    AppLogger.debug('Router handling $type from $source');
     try {
       if (Get.isRegistered<AppObservability>()) {
         AppObservability.instance.trackNotificationReceived(messageId, source);
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warning('trackNotificationReceived error: $e');
+    }
 
     switch (type) {
       case 'message':
@@ -115,7 +120,9 @@ class NotificationRouter {
             if (Supabase.instance.client.auth.currentSession != null) {
               unawaited(MessagingService.instance.sendAck(messageId));
             }
-          } catch (_) {}
+          } catch (e) {
+            AppLogger.warning('sendAck failure during notification route: $e');
+          }
         }
 
         if (decision == 'throttled' || decision == 'silent') {
@@ -346,9 +353,13 @@ class CallNotificationHandler {
     final senderName =
         (data['sender_name'] ?? data['senderName'] ?? 'TalkMate User')
             .toString();
-    final isVideo = (data['is_video'] ?? data['isVideo']?.toString() == 'true');
+            
+    final rawVideo = data['is_video'] ?? data['isVideo'];
+    final bool isVideo = rawVideo is bool 
+        ? rawVideo 
+        : (rawVideo?.toString().toLowerCase() == 'true' || rawVideo?.toString() == '1');
 
-    debugPrint('📞 Incoming Call via Push: $callId from $senderName');
+    debugPrint('📞 Incoming Call via Push: $callId from $senderName (Video: $isVideo)');
 
     if (callId.isNotEmpty && senderId.isNotEmpty) {
       await CallNotificationManager.instance.showIncomingCall(
@@ -558,12 +569,12 @@ class MessagingService {
 
       // Token (optional) + save to user profile when logged in
       final token = await fm.getToken();
-      debugPrint('FCM token: $token');
+      debugPrint('FCM token acquired successfully.');
       unawaited(_maybeSaveToken(token));
 
       // Listen for token refresh
       fm.onTokenRefresh.listen((t) {
-        debugPrint('FCM token refreshed: $t');
+        debugPrint('FCM token refreshed successfully.');
         _maybeSaveToken(t);
       });
     } catch (e) {
@@ -589,13 +600,13 @@ class MessagingService {
           final prefs = await SharedPreferences.getInstance();
           final cacheKey = 'last_web_push_sub_$userId';
           final lastSub = prefs.getString(cacheKey);
-
           if (subscriptionJson != lastSub) {
             final Map<String, dynamic> subMap = jsonDecode(subscriptionJson);
+            final pushEndpoint = (subMap['endpoint'] as String?) ?? 'web_push_$deviceId';
 
             await Get.find<IUserRepository>().addFcmToken(
               userId,
-              'web_push_placeholder',
+              pushEndpoint,
               deviceId: deviceId,
               platform: 'web',
               webPushSubscription: subMap,
@@ -665,6 +676,10 @@ class MessagingService {
               'isVideo': callData['isVideo'] ?? false,
             }));
           }
+
+          try {
+            await _callIntentChannel.invokeMethod('clearCallIntent');
+          } catch (_) {}
         }
       }
     } catch (e) {

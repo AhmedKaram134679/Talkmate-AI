@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
 import 'package:talkmate_ai/controllers/language_controller.dart';
+import 'package:talkmate_ai/controllers/theme_controller.dart';
 import 'package:talkmate_ai/data/models/chat_model.dart' as chat_models;
 import 'package:talkmate_ai/data/repositories/contracts/i_chat_repository.dart';
 import 'package:talkmate_ai/localization/app_localizations.dart';
@@ -39,8 +40,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.wb_sunny_outlined),
-            onPressed: () => Get.changeThemeMode(
-                Get.isDarkMode ? ThemeMode.light : ThemeMode.dark),
+            onPressed: () => Get.find<ThemeController>().toggleTheme(),
           ),
           Container(
             margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),

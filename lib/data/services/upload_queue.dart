@@ -56,13 +56,13 @@ class UploadQueue {
     }
   }
   
-  /// Remove task from queue
-  bool removeTask(String taskId) {
-    final index = _queue.indexWhere((p) => p.task.taskId == taskId);
+  /// Remove task from queue (supports matching by taskId or messageId)
+  bool removeTask(String id) {
+    final index = _queue.indexWhere((p) => p.task.taskId == id || p.task.messageId == id);
     if (index >= 0) {
-      _queue.removeAt(index);
+      final removed = _queue.removeAt(index);
       _updateNotifier();
-      debugPrint('🗑️ [UploadQueue] Task removed: $taskId');
+      debugPrint('🗑️ [UploadQueue] Task removed: ${removed.task.taskId} (messageId: ${removed.task.messageId})');
       return true;
     }
     return false;

@@ -4,7 +4,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
-import 'package:talkmate_ai/core/app_brain/app_brain.dart';
 import 'package:talkmate_ai/core/utils/app_logger.dart';
 import 'package:talkmate_ai/data/models/media_state_model.dart';
 import 'package:talkmate_ai/data/models/message_model.dart';
@@ -289,8 +288,10 @@ class ChatSyncEngine extends GetxService {
         await _localRepo.updateMessageStatus(
             msg.localId!, MessageStatus.failed);
 
-        // Stage C4: Trigger Brain Emergency only if it's a critical pattern
-        Get.find<AppBrain>().enterEmergencyMode('Persistent sync failure');
+        // [Stage B2]: Decouple persistent message sync failure from active calling.
+        // We do NOT trigger AppBrain.enterEmergencyMode here because sync failures
+        // should never abruptly terminate active audio/video calls.
+        AppLogger.w('ChatSyncEngine: Sync failed for message ${msg.localId}. Isolated from call lifecycle.');
       }
       rethrow;
     }

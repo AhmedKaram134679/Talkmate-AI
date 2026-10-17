@@ -59,12 +59,16 @@ class ChatMessageBubble extends StatelessWidget {
     final chatController = Get.find<ChatController>();
     final l10n = AppLocalizations.of(context);
 
-    final bubbleRadius = BorderRadius.only(
-      topLeft: const Radius.circular(20),
-      topRight: const Radius.circular(20),
-      bottomLeft: Radius.circular(isMe ? 20 : 4),
-      bottomRight: Radius.circular(isMe ? 4 : 20),
+    final bubbleRadius = BorderRadiusDirectional.only(
+      topStart: const Radius.circular(20),
+      topEnd: const Radius.circular(20),
+      bottomStart: Radius.circular(isMe ? 20 : 4),
+      bottomEnd: Radius.circular(isMe ? 4 : 20),
     );
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Bounded max width calculation (prevent stretching on ultra-wide desktop displays, U3)
+    final bubbleMaxWidth = (screenWidth * 0.78).clamp(240.0, 600.0);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -95,7 +99,7 @@ class ChatMessageBubble extends StatelessWidget {
                 onLongPress: onLongPress,
                 child: Container(
                   constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.78,
+                    maxWidth: bubbleMaxWidth,
                   ),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -106,8 +110,8 @@ class ChatMessageBubble extends StatelessWidget {
                               theme.colorScheme.primary,
                               theme.colorScheme.primary.withValues(alpha: 0.85),
                             ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                            begin: AlignmentDirectional.topStart,
+                            end: AlignmentDirectional.bottomEnd,
                           )
                         : null,
                     color: isMe
@@ -173,7 +177,7 @@ class ChatMessageBubble extends StatelessWidget {
                         children: [
                           if (message.metadata?['editedAt'] != null)
                             Padding(
-                              padding: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsetsDirectional.only(end: 6),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

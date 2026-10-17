@@ -1,4 +1,4 @@
-package com.example.talkmate_ai
+package com.talkmate.ai
 
 import android.content.Context
 import android.media.AudioManager

@@ -1,11 +1,21 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseAuthService {
-  final SupabaseClient _client = Supabase.instance.client;
+  final SupabaseClient? _customClient;
+
+  SupabaseAuthService({SupabaseClient? client}) : _customClient = client;
+
+  SupabaseClient get _client => _customClient ?? Supabase.instance.client;
 
   User? get currentUser => _client.auth.currentUser;
   Session? get currentSession => _client.auth.currentSession;
-  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
+  Stream<AuthState> get authStateChanges {
+    try {
+      return _client.auth.onAuthStateChange;
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
 
   Future<AuthResponse> signUp({
     required String email,

@@ -41,22 +41,65 @@ import 'package:talkmate_ai/utils/deep_link_logger.dart';
 
 // Entry Point
 void main() async {
+  // [W3]: Guarantee WidgetsFlutterBinding.ensureInitialized() is strictly called FIRST
+  WidgetsFlutterBinding.ensureInitialized();
+
   final startTime = DateTime.now();
   
-  // Initialize Deep Link diagnostic logger first
-  await DeepLinkLogger.initialize();
-  DeepLinkLogger.log('=== APP START INITIATED ===');
-  
-  // Use the new centralized bootstrapper
-  await AppBootstrapper.init();
-  final bootstrapDuration = DateTime.now().difference(startTime);
+  // Initialize Deep Link diagnostic logger safely
+  try {
+    await DeepLinkLogger.initialize();
+    DeepLinkLogger.log('=== APP START INITIATED ===');
+  } catch (e) {
+    debugPrint('DeepLinkLogger initialization warning: $e');
+  }
 
-  unawaited(
-      PerformanceTracker.instance.logAppStartupComplete(bootstrapDuration));
-  AppLogger.info('App Lifecycle: Bootstrap complete',
-      context: {'duration_ms': bootstrapDuration.inMilliseconds});
+  // [W2]: Wrap bootstrapper in robust try/catch to prevent silent black screen
+  try {
+    await AppBootstrapper.init();
+    final bootstrapDuration = DateTime.now().difference(startTime);
 
-  runApp(const TalkMateApp());
+    unawaited(
+        PerformanceTracker.instance.logAppStartupComplete(bootstrapDuration));
+    AppLogger.info('App Lifecycle: Bootstrap complete',
+        context: {'duration_ms': bootstrapDuration.inMilliseconds});
+
+    runApp(const TalkMateApp());
+  } catch (error, stackTrace) {
+    AppLogger.critical(
+      'Fatal Application Initialization Failure',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFF1E1E2E),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 64),
+                const SizedBox(height: 16),
+                const Text(
+                  'Initialization Failed',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  error.toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class TalkMateApp extends StatelessWidget {

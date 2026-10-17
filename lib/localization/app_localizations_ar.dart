@@ -331,7 +331,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String confirmDeleteChatWithName(Object name) {
-    return 'Delete chat with $name';
+    return 'حذف المحادثة مع $name';
   }
 
   @override
@@ -494,7 +494,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get archived => 'تم الأرشفة';
 
   @override
-  String get unarchived => 'Unarchived';
+  String get unarchived => 'غير مؤرشف';
 
   @override
   String get chatArchived => 'تم أرشفة المحادثة';
@@ -855,10 +855,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get enterUserIdToBlock => 'أدخل معرف المستخدم لحظره (userId)';
 
   @override
-  String get flipCamera => 'Flip camera';
+  String get flipCamera => 'قلب الكاميرا';
 
   @override
-  String get shareScreen => 'Share screen';
+  String get shareScreen => 'مشاركة الشاشة';
 
   @override
   String get authErrorInvalidCredentials =>

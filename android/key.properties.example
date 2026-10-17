@@ -1,0 +1,6 @@
+# Template for external production keystore configuration
+# Place this file as key.properties in the android/ directory (never commit key.properties to VCS)
+password=your_keystore_password
+keyPassword=your_key_password
+keyAlias=talkmate_key_alias
+storeFile=/path/to/upload-keystore.jks

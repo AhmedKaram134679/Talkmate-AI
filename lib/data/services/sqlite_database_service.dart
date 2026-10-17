@@ -446,20 +446,20 @@ class SqliteDatabaseService {
     );
   }
 
-  Future<void> decrementFailedUploadRetries(String id) async {
+  Future<void> decrementFailedUploadRetries(String idOrMessageId) async {
     final db = await database;
     await db.rawUpdate(
-      'UPDATE failed_uploads SET retry_attempts_left = retry_attempts_left - 1 WHERE id = ?',
-      [id],
+      'UPDATE failed_uploads SET retry_attempts_left = retry_attempts_left - 1 WHERE id = ? OR message_id = ?',
+      [idOrMessageId, idOrMessageId],
     );
   }
 
-  Future<void> deleteFailedUpload(String id) async {
+  Future<void> deleteFailedUpload(String idOrMessageId) async {
     final db = await database;
     await db.delete(
       'failed_uploads',
-      where: 'id = ?',
-      whereArgs: [id],
+      where: 'id = ? OR message_id = ?',
+      whereArgs: [idOrMessageId, idOrMessageId],
     );
   }
 

@@ -55,10 +55,15 @@ MessageState _mapMessageState(String? status) {
 }
 
 class ChatController extends GetxController with WidgetsBindingObserver {
-  static const String _chatsKey = 'cached_chats';
-  // static const String _messagesKey = 'cached_messages'; // Reserved for future use
+  static ChatController get to => Get.find<ChatController>();
+  static const String _chatsKeyBase = 'cached_chats';
   static const String _hasSentFirstMessageKey = 'has_sent_first_message';
   static const String _lastActiveChatKey = 'last_active_chat_id';
+
+  String get _chatsKey {
+    final uid = _getUserId();
+    return uid != null && uid.isNotEmpty ? '${_chatsKeyBase}_$uid' : _chatsKeyBase;
+  }
 
   final RxList<ChatModel> _chats = <ChatModel>[].obs;
   final RxMap<String, List<MessageModel>> _chatMessages =
@@ -93,18 +98,18 @@ class ChatController extends GetxController with WidgetsBindingObserver {
   final RxMap<String, List<TypingIndicator>> _typingIndicators =
       <String, List<TypingIndicator>>{}.obs;
   final Map<String, Timer?> _typingTimers = {};
+  final List<StreamSubscription> _uploadProgressSubs = [];
+  StreamSubscription? _authStateSub;
   RealtimeChannel? _statesChannel;
   Worker? _authWorker;
   Worker? _uidWorker;
   Timer? _chatsRetryTimer;
+  Timer? _cacheDebounceTimer;
   bool _useChatsFallback = false; // use no-order query while index is building
 
   // Core Foundation repositories & services
-  final IChatRepository _chatRepo = Get.find<IChatRepository>();
-  final IMessageRepository _messageRepo = Get.find<IMessageRepository>();
   final ILocalMessageRepository _localRepo =
       Get.find<ILocalMessageRepository>();
-  final ITypingRepository _typingRepo = Get.find<ITypingRepository>();
   final ChatSyncEngine _syncEngine = Get.find<ChatSyncEngine>();
 
   // Getters
@@ -242,9 +247,10 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     );
 
     if (onProgress != null) {
-      Get.find<BackgroundUploadService>()
+      final sub = Get.find<BackgroundUploadService>()
           .getUploadProgressObservable(localId)
           .listen(onProgress);
+      _uploadProgressSubs.add(sub);
     }
 
     // Secure file in permanent Documents storage to prevent temp folder deletion
@@ -1543,9 +1549,16 @@ class ChatController extends GetxController with WidgetsBindingObserver {
         if (!AppConfig.useMockData) {
           if (loggedIn) {
             _detachRealtime();
+            _loadCachedData();
             _attachRealtime();
           } else {
             _detachRealtime();
+            // [DATA-01, DATA-02]: Clean user memory caches on sign out
+            _chats.clear();
+            _chatMessages.clear();
+            _userNameCache.clear();
+            _lastActiveChatId.value = '';
+            _activeChatId.value = '';
           }
         }
       });
@@ -1553,7 +1566,14 @@ class ChatController extends GetxController with WidgetsBindingObserver {
       _uidWorker = ever<String>(auth.userIdRx, (uid) {
         if (!AppConfig.useMockData) {
           _detachRealtime();
+          // [DATA-01, DATA-02]: Purge previous account caches on UID switch
+          _chats.clear();
+          _chatMessages.clear();
+          _userNameCache.clear();
+          _lastActiveChatId.value = '';
+          _activeChatId.value = '';
           if (uid.isNotEmpty) {
+            _loadCachedData();
             _attachRealtime();
           }
         }
@@ -1561,7 +1581,7 @@ class ChatController extends GetxController with WidgetsBindingObserver {
       // React to token refresh to update Realtime subscriptions
       // [Stage R]: Debounced Realtime Restart
       Timer? refreshDebounce;
-      Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      _authStateSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
         if (data.event == AuthChangeEvent.tokenRefreshed) {
           if (!AppConfig.useMockData && auth.isLoggedIn) {
             refreshDebounce?.cancel();
@@ -1583,19 +1603,14 @@ class ChatController extends GetxController with WidgetsBindingObserver {
 
   Future<void> _initialize() async {
     await _loadCachedData();
-    _generateMockData();
-    _ensureMockMessagesForExistingChats();
-    // Attach realtime if not using mock data
-    if (!AppConfig.useMockData) {
-      _isLoading.value = false;
-      _initialized.value = true;
+    _isLoading.value = false;
+    _initialized.value = true;
 
-      // Load activation/retention states
-      final prefs = await SharedPreferences.getInstance();
-      _hasSentFirstMessage.value =
-          prefs.getBool(_hasSentFirstMessageKey) ?? false;
-      _lastActiveChatId.value = prefs.getString(_lastActiveChatKey) ?? '';
-    }
+    // Load activation/retention states
+    final prefs = await SharedPreferences.getInstance();
+    _hasSentFirstMessage.value =
+        prefs.getBool(_hasSentFirstMessageKey) ?? false;
+    _lastActiveChatId.value = prefs.getString(_lastActiveChatKey) ?? '';
   }
 
   void _setupSovereignLockdown() {
@@ -2064,7 +2079,18 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _saveCachedData() async {
+  Future<void> _saveCachedData({bool immediate = false}) async {
+    if (!immediate) {
+      _cacheDebounceTimer?.cancel();
+      _cacheDebounceTimer = Timer(const Duration(seconds: 2), () {
+        _performSaveCachedData();
+      });
+      return;
+    }
+    await _performSaveCachedData();
+  }
+
+  Future<void> _performSaveCachedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -2082,95 +2108,7 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  void _generateMockData() {
-    if (AppConfig.useMockData && _chats.isEmpty) {
-      final mockChats = [
-        ChatModel.mock(
-          name: 'أحمد محمد',
-          type: ChatType.individual,
-          unreadCount: 3,
-        ),
-        ChatModel.mock(
-          name: 'فريق العمل',
-          type: ChatType.group,
-          unreadCount: 1,
-        ),
-        ChatModel.mock(
-          name: 'سارة أحمد',
-          type: ChatType.individual,
-          unreadCount: 0,
-        ),
-        ChatModel.mock(
-          name: 'مجموعة الأصدقاء',
-          type: ChatType.group,
-          unreadCount: 5,
-        ),
-        ChatModel.mock(
-          name: 'محمد علي',
-          type: ChatType.individual,
-          unreadCount: 0,
-        ),
-        ChatModel.mock(
-          name: 'مجموعة العائلة',
-          type: ChatType.group,
-          unreadCount: 2,
-        ),
-      ];
 
-      _chats.addAll(mockChats);
-
-      // Generate mock messages for each chat
-      for (final chat in mockChats) {
-        _generateMockMessagesForChat(chat.id);
-      }
-
-      _saveCachedData();
-    }
-  }
-
-  void _generateMockMessagesForChat(String chatId) {
-    final messages = [
-      MessageModel.mock(
-        chatId: chatId,
-        content: 'مرحباً! كيف حالك؟',
-        status: MessageStatus.read,
-      ),
-      MessageModel.mock(
-        chatId: chatId,
-        content: 'أهلاً وسهلاً! بخير والحمد لله',
-        status: MessageStatus.read,
-      ),
-      MessageModel.mock(
-        chatId: chatId,
-        content: 'هل أنت مستعد للاجتماع غداً؟',
-        status: MessageStatus.delivered,
-      ),
-    ];
-
-    _chatMessages[chatId] = messages;
-
-    // Update chat's last message fields so search by lastMessage works
-    final last = messages.isNotEmpty ? messages.last : null;
-    final chatIndex = _chats.indexWhere((c) => c.id == chatId);
-    if (chatIndex != -1 && last != null) {
-      _chats[chatIndex] = _chats[chatIndex].copyWith(
-        lastMessage: last,
-        lastMessageId: last.id,
-        lastActivity: last.timestamp,
-        updatedAt: last.timestamp,
-      );
-    }
-  }
-
-  void _ensureMockMessagesForExistingChats() {
-    if (!AppConfig.useMockData) return;
-    for (final chat in _chats) {
-      final hasMessages = _chatMessages[chat.id]?.isNotEmpty ?? false;
-      if (!hasMessages) {
-        _generateMockMessagesForChat(chat.id);
-      }
-    }
-  }
 
   void setSearchQuery(String query) {
     _searchQuery.value = query;
@@ -2182,17 +2120,13 @@ class ChatController extends GetxController with WidgetsBindingObserver {
 
   Future<void> refreshChats() async {
     _isLoading.value = true;
-
     try {
-      // Simulate network delay
-      await Future.delayed(const Duration(seconds: 1));
-
-      // In a real app, this would fetch from server
-      if (AppConfig.useMockData) {
-        // Refresh mock data
-        _generateMockData();
+      final uid = _getUserId();
+      if (uid != null && uid.isNotEmpty) {
+        final chats = await Get.find<IChatRepository>().watchUserChats(uid).first;
+        _chats.assignAll(chats.map(_mapChatFromData));
+        await _saveCachedData();
       }
-
       final l10n = AppLocalizations.of(Get.context!);
       Get.snackbar(
         l10n.updated,
@@ -2231,25 +2165,7 @@ class ChatController extends GetxController with WidgetsBindingObserver {
       return existingChat;
     }
 
-    if (AppConfig.useMockData) {
-      final chat = ChatModel.individual(
-        participant1Id: currentUserIdx,
-        participant2Id: otherUserId,
-        name: otherUserName,
-      );
-      _chats.insert(0, chat);
-      _chatMessages[chat.id] = [];
-      await _saveCachedData();
-      final l10n = AppLocalizations.of(Get.context!);
-      Get.snackbar(
-        l10n.newChat,
-        l10n.chatCreatedWithName(otherUserName),
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return chat;
-    }
-
-    // 2. Create in Firestore
+    // 2. Create in Repository
     final created = await Get.find<IChatRepository>().createChat(
       participantIds: [currentUserIdx, otherUserId],
       isGroup: false,
@@ -2272,30 +2188,40 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     return mapped;
   }
 
+  Future<ChatModel> getOrCreateDirectChat(String otherUserId, {String? otherUserName}) async {
+    final currentUserId = Get.find<AuthController>().userId;
+    // Check local memory first
+    final existingChat = _chats.firstWhereOrNull((c) =>
+        c.type == ChatType.individual &&
+        c.participantIds.contains(otherUserId) &&
+        c.participantIds.contains(currentUserId));
+
+    if (existingChat != null) {
+      return existingChat;
+    }
+
+    // Try fetching user name if not provided
+    String resolvedName = otherUserName ?? 'مستخدم';
+    if (otherUserName == null || otherUserName.isEmpty) {
+      try {
+        final user = await Get.find<IUserRepository>().getById(otherUserId);
+        if (user != null) {
+          resolvedName = user.displayName ?? user.email;
+        }
+      } catch (_) {}
+    }
+
+    return await createIndividualChat(
+      otherUserId: otherUserId,
+      otherUserName: resolvedName,
+    );
+  }
+
   Future<ChatModel> createGroupChat({
     required String name,
     required List<String> participantIds,
     String? description,
   }) async {
-    if (AppConfig.useMockData) {
-      final chat = ChatModel.group(
-        name: name,
-        participantIds: participantIds,
-        createdBy: Get.find<AuthController>().userId,
-        description: description,
-      );
-      _chats.insert(0, chat);
-      _chatMessages[chat.id] = [];
-      await _saveCachedData();
-      final l10n = AppLocalizations.of(Get.context!);
-      Get.snackbar(
-        l10n.newGroup,
-        l10n.groupCreatedWithName(name),
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return chat;
-    }
-
     // Ensure the current user is included in participants and remove duplicates
     final me = Get.find<AuthController>().userId;
     final normalizedParticipants = <String>{...participantIds, me}.toList();
@@ -2328,32 +2254,6 @@ class ChatController extends GetxController with WidgetsBindingObserver {
   }) async {
     if (_isInputLocked.value) {
       Get.snackbar('تنبيه سيادي', _lockReason.value);
-      return;
-    }
-    if (AppConfig.useMockData) {
-      final message = MessageModel(
-        chatId: chatId,
-        senderId: Get.find<AuthController>().userId,
-        content: content,
-        type: type,
-        replyToMessageId: replyToMessageId,
-      );
-      if (_chatMessages[chatId] == null) {
-        _chatMessages[chatId] = [];
-      }
-      _chatMessages[chatId]!.add(message);
-      final chatIndex = _chats.indexWhere((chat) => chat.id == chatId);
-      if (chatIndex != -1) {
-        _chats[chatIndex] = _chats[chatIndex].copyWith(
-          lastMessage: message,
-          lastActivity: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        final chat = _chats.removeAt(chatIndex);
-        _chats.insert(0, chat);
-      }
-      await _saveCachedData();
-      _simulateMessageStatusUpdates(message);
       return;
     }
 
@@ -2434,24 +2334,7 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  // _sendMessageWithRetry removed in favor of ChatSyncEngine
 
-  void _simulateMessageStatusUpdates(MessageModel message) {
-    // Simulate sent status
-    Future.delayed(const Duration(seconds: 1), () {
-      _updateMessageStatus(message.id, MessageStatus.sent);
-    });
-
-    // Simulate delivered status
-    Future.delayed(const Duration(seconds: 3), () {
-      _updateMessageStatus(message.id, MessageStatus.delivered);
-    });
-
-    // Simulate read status (for demo purposes)
-    Future.delayed(const Duration(seconds: 5), () {
-      _updateMessageStatus(message.id, MessageStatus.read);
-    });
-  }
 
   void _updateMessageStatus(String messageId, MessageStatus status) {
     for (final chatId in _chatMessages.keys) {
@@ -2654,6 +2537,13 @@ class ChatController extends GetxController with WidgetsBindingObserver {
   Future<void> clearChatMessages(String chatId) async {
     _chatMessages[chatId] = [];
 
+    // [Stage B3]: Execute local repository cleanup
+    try {
+      await _localRepo.clearChat(chatId);
+    } catch (e) {
+      debugPrint('Error clearing local chat messages: $e');
+    }
+
     // Update chat's last message
     final chatIndex = _chats.indexWhere((chat) => chat.id == chatId);
     if (chatIndex != -1) {
@@ -2679,6 +2569,13 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     if (messages == null) return;
 
     messages.removeWhere((m) => m.id == messageId);
+
+    // [Stage B3]: Delete from local repository
+    try {
+      await _localRepo.deleteMessage(messageId);
+    } catch (e) {
+      debugPrint('Error deleting local message: $e');
+    }
 
     // Update chat's last message if needed
     final chatIndex = _chats.indexWhere((chat) => chat.id == chatId);
@@ -2794,13 +2691,17 @@ class ChatController extends GetxController with WidgetsBindingObserver {
     _statesChannel?.unsubscribe();
     _authWorker?.dispose();
     _uidWorker?.dispose();
+    _authStateSub?.cancel();
+    for (final sub in _uploadProgressSubs) {
+      sub.cancel();
+    }
+    _uploadProgressSubs.clear();
     WidgetsBinding.instance.removeObserver(this);
 
-    // Close repositories to clean up sinks (Stage C4)
-    unawaited(_chatRepo.close());
-    unawaited(_messageRepo.close());
-    unawaited(_localRepo.close());
-    unawaited(_typingRepo.close());
+    _cacheDebounceTimer?.cancel();
+    _cacheDebounceTimer = null;
+    _chatsRetryTimer?.cancel();
+    _chatsRetryTimer = null;
 
     super.onClose();
   }
