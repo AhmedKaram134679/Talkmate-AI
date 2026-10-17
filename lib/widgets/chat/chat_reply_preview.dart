@@ -41,8 +41,8 @@ class ChatReplyPreview extends StatelessWidget {
           color: (isMe ? Colors.black : theme.colorScheme.surface)
               .withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
-          border: Border(
-            right: BorderSide(
+          border: BorderDirectional(
+            start: BorderSide(
               color: isMe ? Colors.white70 : theme.primaryColor,
               width: 3,
             ),
