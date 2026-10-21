@@ -1,8 +1,1 @@
-{
-  "ar": [
-    "confirmDeleteChatWithName",
-    "unarchived",
-    "flipCamera",
-    "shareScreen"
-  ]
-}
+{}

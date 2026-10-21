@@ -42,7 +42,7 @@ macos/Pods/
 .env.*
 firebase-service-account.json
 **/service-account.json
-google-services.json
+# google-services.json
 GoogleService-Info.plist
 firebase.json.bak
 *.bak

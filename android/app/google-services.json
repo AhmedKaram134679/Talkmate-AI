@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "232460859156",
+    "project_id": "talkmate-ai-98b15",
+    "storage_bucket": "talkmate-ai-98b15.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:232460859156:android:f41b6666a8f28a776c3401",
+        "android_client_info": {
+          "package_name": "com.talkmate.ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC01L5oP0XNAgz10leX2ZBdOQwiCsxojwI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:232460859156:android:f41b6666a8f28a776c3401",
+        "android_client_info": {
+          "package_name": "com.example.talkmate_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC01L5oP0XNAgz10leX2ZBdOQwiCsxojwI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
