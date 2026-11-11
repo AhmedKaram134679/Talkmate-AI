@@ -19,17 +19,22 @@ CREATE INDEX IF NOT EXISTS routing_logs_timeline_idx ON public.routing_logs (cre
 CREATE INDEX IF NOT EXISTS routing_logs_message_idx ON public.routing_logs (message_id);
 CREATE INDEX IF NOT EXISTS routing_logs_device_idx ON public.routing_logs (device_id);
 
--- RLS: Read-only for everyone (or specific role), Insert only by Service Role (Edge Function)
+-- RLS: users read only their own logs, inserts only by Service Role (Edge Function)
 ALTER TABLE public.routing_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow Service Role to Insert Logs" 
-ON public.routing_logs 
-FOR INSERT 
-TO service_role 
+DROP POLICY IF EXISTS "Allow Service Role to Insert Logs" ON public.routing_logs;
+CREATE POLICY "Allow Service Role to Insert Logs"
+ON public.routing_logs
+FOR INSERT
+TO service_role
 WITH CHECK (true);
 
-CREATE POLICY "Allow Authenticated Users to Read Logs" 
-ON public.routing_logs 
-FOR SELECT 
-TO authenticated 
-USING (true); -- Ideally restrict to admin or own logs, but for debug tool we open to auth.
+-- Was: USING (true) for every authenticated user, which exposed all users'
+-- routing decisions. Now each user sees only their own rows (plus 'system' rows).
+DROP POLICY IF EXISTS "Allow Authenticated Users to Read Logs" ON public.routing_logs;
+DROP POLICY IF EXISTS "routing_logs_select_own" ON public.routing_logs;
+CREATE POLICY "routing_logs_select_own"
+ON public.routing_logs
+FOR SELECT
+TO authenticated
+USING (recipient_id = auth.uid() OR decision = 'system');
