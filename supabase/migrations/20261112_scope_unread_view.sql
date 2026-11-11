@@ -15,3 +15,4 @@ GROUP BY user_id;
 REVOKE ALL ON public.view_user_unread_counts FROM anon;
 
 COMMIT;
+
