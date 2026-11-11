@@ -225,6 +225,7 @@ WITH CHECK (
 -- 2. They are the creator/member of the conversation
 DROP POLICY IF EXISTS "Insert_Participants_Fix" ON public.conversation_participants;
 DROP POLICY IF EXISTS "Insert participants" ON public.conversation_participants;
+DROP POLICY IF EXISTS "Insert_Participants_Secure" ON public.conversation_participants;
 CREATE POLICY "Insert_Participants_Secure" ON public.conversation_participants
 FOR INSERT
 TO authenticated, service_role
@@ -256,6 +257,7 @@ DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.p
 
 -- Authenticated users can view profiles.
 -- Privacy fields like email can also be protected via column privileges or security views
+DROP POLICY IF EXISTS "Profiles_Select_Authenticated" ON public.profiles;
 CREATE POLICY "Profiles_Select_Authenticated" ON public.profiles
 FOR SELECT
 TO authenticated, service_role

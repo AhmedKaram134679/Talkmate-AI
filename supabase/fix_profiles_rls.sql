@@ -13,6 +13,9 @@ DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.profiles;
 DROP POLICY IF EXISTS "Individuals can create their own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Individuals can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles_Select_All" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles_Insert_Own" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles_Update_Own" ON public.profiles;
 
 -- 3. Create robust policies
 
