@@ -383,6 +383,26 @@ class AuthController extends GetxController {
   }
 
   Future<void> logout() async {
+    // Stop this device from receiving the previous user's pushes. It must run
+    // BEFORE signOut(), because the RPC needs the authenticated session.
+    try {
+      final deviceId = await DeviceIdentity.getId();
+      await Supabase.instance.client
+          .rpc('unregister_device_token', params: {'p_device_id': deviceId})
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('logout: unregister_device_token failed: $e');
+    }
+    try {
+      if (MessagingService.instance.isInitialized &&
+          FirebaseService.supportsMessaging) {
+        await FirebaseMessaging.instance
+            .deleteToken()
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('logout: deleteToken failed: $e');
+    }
     await _authService.signOut();
   }
 

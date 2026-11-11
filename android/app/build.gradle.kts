@@ -13,7 +13,20 @@ plugins {
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+val hasReleaseKey = keystorePropertiesFile.exists()
+
+// A release build must never be signed with the public debug key by accident.
+// CI jobs that only need a release-mode compile can opt in explicitly:
+//   set ORG_GRADLE_PROJECT_allowDebugSigning=true in the environment
+val isReleaseTask = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
+if (isReleaseTask && !hasReleaseKey && !allowDebugSigning) {
+    throw GradleException(
+        "android/key.properties is missing: refusing to sign a release build with the debug key. " +
+            "Create key.properties (see key.properties.example) or set the ORG_GRADLE_PROJECT_allowDebugSigning=true environment variable for CI-only builds."
+    )
 }
 
 android {
@@ -35,18 +48,14 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("password")
-            } else {
-                // Graceful fallback to debug signing if key.properties is not yet provided
-                val debugConfig = signingConfigs.getByName("debug")
-                keyAlias = debugConfig.keyAlias
-                keyPassword = debugConfig.keyPassword
-                storeFile = debugConfig.storeFile
-                storePassword = debugConfig.storePassword
+            if (hasReleaseKey) {
+                fun requiredProp(name: String): String =
+                    keystoreProperties.getProperty(name)
+                        ?: throw GradleException("key.properties is missing the '$name' entry")
+                keyAlias = requiredProp("keyAlias")
+                keyPassword = requiredProp("keyPassword")
+                storeFile = file(requiredProp("storeFile"))
+                storePassword = requiredProp("password")
             }
         }
     }
@@ -61,7 +70,12 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Debug signing is reachable only with allowDebugSigning=true (see the guard above).
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
