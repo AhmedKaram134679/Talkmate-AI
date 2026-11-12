@@ -21,7 +21,9 @@ val hasReleaseKey = keystorePropertiesFile.exists()
 // CI jobs that only need a release-mode compile can opt in explicitly:
 //   set ORG_GRADLE_PROJECT_allowDebugSigning=true in the environment
 val isReleaseTask = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
-val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
+val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true" ||
+    System.getenv("ORG_GRADLE_PROJECT_allowDebugSigning") == "true" ||
+    System.getenv("ALLOW_DEBUG_SIGNING") == "true"
 if (isReleaseTask && !hasReleaseKey && !allowDebugSigning) {
     throw GradleException(
         "android/key.properties is missing: refusing to sign a release build with the debug key. " +
