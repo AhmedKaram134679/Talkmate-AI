@@ -3,11 +3,63 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { initializeApp, getApps, cert, type ServiceAccount } from "npm:firebase-admin@12.7.0/app";
 import { getMessaging } from "npm:firebase-admin@12.7.0/messaging";
 import webpush from "npm:web-push@3.6.7";
-import serviceAccount from "./service-account.json" with { type: "json" };
+const firebaseServiceAccountBase64 = Deno.env.get(
+  "FIREBASE_SERVICE_ACCOUNT_B64",
+);
+
+if (!firebaseServiceAccountBase64) {
+  throw new Error(
+    "Missing required environment variable: FIREBASE_SERVICE_ACCOUNT_B64",
+  );
+}
+
+let firebaseServiceAccount: ServiceAccount;
+
+try {
+  const binaryString = atob(firebaseServiceAccountBase64);
+
+  const bytes = Uint8Array.from(binaryString, (char) =>
+    char.charCodeAt(0)
+  );
+
+  const serviceAccountJson = new TextDecoder().decode(bytes);
+
+  firebaseServiceAccount = JSON.parse(
+    serviceAccountJson,
+  ) as ServiceAccount;
+
+  if (
+    !firebaseServiceAccount.projectId &&
+    !("project_id" in firebaseServiceAccount)
+  ) {
+    throw new Error("Missing Firebase project identifier.");
+  }
+
+  if (
+    !firebaseServiceAccount.privateKey &&
+    !("private_key" in firebaseServiceAccount)
+  ) {
+    throw new Error("Missing Firebase private key.");
+  }
+
+  if (
+    !firebaseServiceAccount.clientEmail &&
+    !("client_email" in firebaseServiceAccount)
+  ) {
+    throw new Error("Missing Firebase client email.");
+  }
+} catch (error) {
+  console.error(
+    "Firebase service account configuration is invalid:",
+    error instanceof Error ? error.message : "Unknown configuration error",
+  );
+
+  throw new Error("Firebase service account initialization failed.");
+}
 
 if (getApps().length === 0) {
   initializeApp({
-    credential: cert(serviceAccount as unknown as ServiceAccount),
+    credential: cert(firebaseServiceAccount),
   });
 }
 
