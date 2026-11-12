@@ -75,7 +75,6 @@ firebase_cpp_sdk_*/
 # Native binaries and vendored example apps (re-downloaded or built on demand)
 # ------------------------------------------------------------------------------
 third_party/**/example/
-third_party/**/libwebrtc/
 *.pdb
 *.exe
 *.dll
@@ -179,6 +178,12 @@ supabase/seed.local.sql
 *.tar.gz
 *.tgz
 *.iso
+
+# Keep flutter_webrtc binaries required by Windows CI
+!third_party/flutter_webrtc/third_party/libwebrtc/
+!third_party/flutter_webrtc/third_party/libwebrtc/**
+!third_party/flutter_webrtc/third_party/downloads/
+!third_party/flutter_webrtc/third_party/downloads/libwebrtc.zip
 
 # ------------------------------------------------------------------------------
 # Logs, audit dumps and AI/agent-generated reports (root level only)
