@@ -56,8 +56,15 @@ android {
                         ?: throw GradleException("key.properties is missing the '$name' entry")
                 keyAlias = requiredProp("keyAlias")
                 keyPassword = requiredProp("keyPassword")
-                storeFile = file(requiredProp("storeFile"))
-                storePassword = requiredProp("password")
+                val storePath = requiredProp("storeFile")
+                val resolvedStoreFile = rootProject.file(storePath).takeIf { it.exists() }
+                    ?: project.file(storePath).takeIf { it.exists() }
+                    ?: rootProject.file("../$storePath").takeIf { it.exists() }
+                    ?: file(storePath)
+                storeFile = resolvedStoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                    ?: keystoreProperties.getProperty("password")
+                    ?: throw GradleException("key.properties is missing the 'storePassword' or 'password' entry")
             }
         }
     }

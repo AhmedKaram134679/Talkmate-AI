@@ -64,10 +64,24 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Android APK
+      - name: Configure Keystore from Secrets
         env:
-          ORG_GRADLE_PROJECT_allowDebugSigning: "true"
-          ALLOW_DEBUG_SIGNING: "true"
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/talkmate-upload.jks
+            cat <<EOF > android/key.properties
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=talkmate-upload.jks
+          EOF
+          fi
+
+      - name: Build Android APK
         run: flutter build apk --release
 
       - name: Upload Android APK
@@ -76,6 +90,12 @@ jobs:
           name: android-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Cleanup Keystore and Signing Files
+        if: always()
+        run: |
+          rm -f android/talkmate-upload.jks
+          rm -f android/key.properties
 
   windows-release:
     name: Build Windows Release
