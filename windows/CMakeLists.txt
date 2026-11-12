@@ -64,6 +64,27 @@ add_subdirectory("runner")
 include(flutter/generated_plugins.cmake)
 
 
+# === MSVC STL1011 Compatibility Workaround ===
+# Some Windows plugins use <experimental/coroutine> which triggers MSVC error
+# STL1011 on recent Visual Studio toolsets. The macro below silences that
+# diagnostic.  It is applied only to the three known-affected plugin targets
+# so that the application code itself is not affected.
+foreach(plugin_target IN ITEMS
+    flutter_local_notifications_windows
+    just_audio_windows_plugin
+    permission_handler_windows_plugin
+)
+  if(TARGET ${plugin_target})
+    target_compile_definitions(${plugin_target} PRIVATE
+      _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+    )
+    message(STATUS "MSVC STL1011 workaround applied → ${plugin_target}")
+  else()
+    message(WARNING "MSVC STL1011 workaround: target '${plugin_target}' not found — skipping")
+  endif()
+endforeach()
+
+
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
 # run in place. This is done instead of making a separate bundle (as on Linux)
