@@ -741,33 +741,125 @@ serve(async (req) => {
 
     const { chat_id, sender_id, message_id, content_type, text_content, priority: payloadPriority, force_fcm, type: payloadType } = payload;
 
-    // Caller Authorization check: If not service_role, verify that caller is permitted for this action
+    // Caller Authorization check: If not service_role, strictly verify against trusted database records
     if (callerRole !== "service_role") {
       if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
-        const finalSenderId = sender_id || payload.caller_id;
-        const receiverId = payload.receiver_id;
-        if (callerUserId !== finalSenderId && callerUserId !== receiverId) {
-          console.warn(`⛔ Forbidden: Caller ${callerUserId} tried to initiate call notification for sender ${finalSenderId} / receiver ${receiverId}`);
-          return new Response(JSON.stringify({ error: "Forbidden: Caller does not match sender or receiver" }), {
+        const callId = payload.call_id || message_id;
+        if (!callId) {
+          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered call push without call_id`);
+          return new Response(JSON.stringify({ error: "Forbidden: Missing call record identifier" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
           });
         }
+
+        // Query trusted call record from database
+        const { data: callRecord, error: callError } = await supabaseAdmin
+          .from("calls")
+          .select("id, sender_id, caller_id, receiver_id, callee_id, status")
+          .eq("id", callId)
+          .single();
+
+        if (callError || !callRecord) {
+          console.warn(`⛔ Forbidden: Call record not found for id ${callId}:`, callError);
+          return new Response(JSON.stringify({ error: "Forbidden: Referenced call record not found" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const dbSenderId = callRecord.sender_id || callRecord.caller_id;
+        const dbReceiverId = callRecord.receiver_id || callRecord.callee_id;
+
+        // Caller must be the sender who initiated the call
+        if (callerUserId !== dbSenderId) {
+          console.warn(`⛔ Forbidden: Caller ${callerUserId} is not the sender (${dbSenderId}) of call ${callId}`);
+          return new Response(JSON.stringify({ error: "Forbidden: Caller does not match call sender" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Overwrite any caller-supplied IDs with trusted DB values
+        payload.sender_id = dbSenderId;
+        payload.caller_id = dbSenderId;
+        payload.receiver_id = dbReceiverId;
+
       } else if (payloadType === 'room_created') {
-        const creatorId = payload.created_by;
-        if (callerUserId !== creatorId) {
-          console.warn(`⛔ Forbidden: Caller ${callerUserId} does not match room creator ${creatorId}`);
+        const roomId = payload.room_id || payload.id;
+        if (!roomId) {
+          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered room push without room id`);
+          return new Response(JSON.stringify({ error: "Forbidden: Missing room identifier" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Query trusted room record from database
+        const { data: roomRecord, error: roomError } = await supabaseAdmin
+          .from("rooms")
+          .select("id, name, created_by")
+          .eq("id", roomId)
+          .single();
+
+        if (roomError || !roomRecord) {
+          console.warn(`⛔ Forbidden: Room record not found for id ${roomId}:`, roomError);
+          return new Response(JSON.stringify({ error: "Forbidden: Referenced room record not found" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        if (callerUserId !== roomRecord.created_by) {
+          console.warn(`⛔ Forbidden: Caller ${callerUserId} does not match trusted room creator ${roomRecord.created_by}`);
           return new Response(JSON.stringify({ error: "Forbidden: Caller does not match room creator" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
           });
         }
-      } else if (sender_id && callerUserId !== sender_id) {
-        console.warn(`⛔ Forbidden: Caller ${callerUserId} tried to send push for sender ${sender_id}`);
-        return new Response(JSON.stringify({ error: "Forbidden: Caller does not match sender" }), {
-          status: 403,
-          headers: { "Content-Type": "application/json" }
-        });
+
+        // Overwrite payload with trusted values
+        payload.created_by = roomRecord.created_by;
+        if (roomRecord.name) payload.name = roomRecord.name;
+
+      } else {
+        // Message payload
+        if (!message_id) {
+          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered message push without message_id`);
+          return new Response(JSON.stringify({ error: "Forbidden: Missing message record identifier" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Query trusted message record from database
+        const { data: messageRecord, error: msgError } = await supabaseAdmin
+          .from("messages")
+          .select("id, sender_id, chat_id, text, type")
+          .eq("id", message_id)
+          .single();
+
+        if (msgError || !messageRecord) {
+          console.warn(`⛔ Forbidden: Message record not found for id ${message_id}:`, msgError);
+          return new Response(JSON.stringify({ error: "Forbidden: Referenced message record not found" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        if (callerUserId !== messageRecord.sender_id) {
+          console.warn(`⛔ Forbidden: Caller ${callerUserId} is not the sender (${messageRecord.sender_id}) of message ${message_id}`);
+          return new Response(JSON.stringify({ error: "Forbidden: Caller does not match message sender" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Overwrite payload with trusted values from database
+        payload.sender_id = messageRecord.sender_id;
+        payload.chat_id = messageRecord.chat_id;
+        if (messageRecord.text) payload.text_content = messageRecord.text;
+        if (messageRecord.type) payload.content_type = messageRecord.type;
       }
     }
 
@@ -775,7 +867,7 @@ serve(async (req) => {
     if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
       console.log("📞 AI Routing: Processing Call Ringing push...");
       const receiverId = payload.receiver_id;
-      const finalSenderId = sender_id || payload.caller_id;
+      const finalSenderId = payload.sender_id || payload.caller_id;
       const isVideo = payload.is_video === true || payload.call_type === 'video';
       const callId = payload.call_id || message_id;
 
@@ -879,7 +971,10 @@ serve(async (req) => {
       return new Response(JSON.stringify({ results }));
     }
 
-    if (!chat_id || !sender_id) {
+    const effectiveChatId = payload.chat_id || chat_id;
+    const effectiveSenderId = payload.sender_id || sender_id;
+
+    if (!effectiveChatId || !effectiveSenderId) {
       return new Response(JSON.stringify({ error: "Missing chat_id or sender_id" }), { status: 400 });
     }
 
@@ -887,15 +982,15 @@ serve(async (req) => {
     const { data: senderProfile } = await supabaseAdmin
       .from("profiles")
       .select("username, display_name")
-      .eq("id", sender_id)
+      .eq("id", effectiveSenderId)
       .single();
     
     const senderName = senderProfile?.display_name || senderProfile?.username || "TalkMate User";
 
     // 2. Fetch Conversation Details and Participants
     const [convResult, participantsResult] = await Promise.all([
-      supabaseAdmin.from("conversations").select("type, is_group, group_name").eq("id", chat_id).single(),
-      supabaseAdmin.from("conversation_participants").select("user_id, is_muted, mute_until").eq("conversation_id", chat_id).neq("user_id", sender_id)
+      supabaseAdmin.from("conversations").select("type, is_group, group_name").eq("id", effectiveChatId).single(),
+      supabaseAdmin.from("conversation_participants").select("user_id, is_muted, mute_until").eq("conversation_id", effectiveChatId).neq("user_id", effectiveSenderId)
     ]);
 
     const isGroup = convResult.data?.is_group || false;
