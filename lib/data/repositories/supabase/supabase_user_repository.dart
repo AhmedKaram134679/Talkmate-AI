@@ -102,8 +102,24 @@ class SupabaseUserRepository implements IUserRepository {
     final sanitized = trimmed.replaceAll(RegExp(r'[,().\\]'), '').trim();
     if (sanitized.isEmpty) return [];
 
-    // If query looks like a specific email address, allow exact case-insensitive match;
-    // otherwise search by username prefix/pattern without exposing all emails to pattern harvesting
+    // [SEC-04 Hardening]: Prefer secure search_users RPC to prevent full table scraping
+    // Falls back to direct query if RPC is temporarily unavailable
+    try {
+      final rpcRes = await _client.rpc('search_users', params: {
+        'p_query': sanitized,
+        'p_limit': limit,
+      });
+      if (rpcRes != null && rpcRes is List) {
+        var users = rpcRes.map((map) => AppUser.fromJson(map as Map<String, dynamic>)).toList();
+        if (userIds != null && userIds.isNotEmpty) {
+          users = users.where((u) => userIds.contains(u.id)).toList();
+        }
+        return users;
+      }
+    } catch (e) {
+      debugPrint('⚠️ SupabaseUserRepo: search_users RPC fallback to query: $e');
+    }
+
     var queryBuilder = _client.from('profiles').select();
     if (trimmed.contains('@')) {
       queryBuilder = queryBuilder.eq('email', trimmed.toLowerCase());

@@ -88,12 +88,61 @@ CREATE TRIGGER tr_on_call_ringing
 AFTER INSERT ON public.calls
 FOR EACH ROW EXECUTE FUNCTION public.fn_on_call_ringing_push();
 
--- 6. Candidates Append Helper Function
+-- 6. Candidates Append Helper Function (SEC-01 Hardened)
 CREATE OR REPLACE FUNCTION public.fn_add_call_candidate(p_call_id uuid, p_candidate jsonb)
-RETURNS void AS $$
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+    v_user_id uuid := auth.uid();
 BEGIN
-  UPDATE public.calls 
-  SET candidates = candidates || jsonb_build_array(p_candidate)
-  WHERE id = p_call_id;
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
+    END IF;
+
+    IF p_candidate IS NULL
+       OR jsonb_typeof(p_candidate) <> 'object'
+       OR octet_length(p_candidate::text) > 8192 THEN
+        RAISE EXCEPTION 'Invalid ICE candidate payload' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE public.calls
+    SET candidates =
+        COALESCE(candidates, '[]'::jsonb)
+        || jsonb_build_array(p_candidate)
+    WHERE id = p_call_id
+      AND (
+          sender_id = v_user_id
+          OR receiver_id = v_user_id
+          OR caller_id = v_user_id
+          OR callee_id = v_user_id
+      )
+      AND status IN ('ringing', 'accepted', 'ongoing')
+      AND jsonb_array_length(COALESCE(candidates, '[]'::jsonb)) < 150;
+
+    IF NOT FOUND THEN
+        IF NOT EXISTS (SELECT 1 FROM public.calls WHERE id = p_call_id) THEN
+            RAISE EXCEPTION 'Call not found' USING ERRCODE = 'P0002';
+        ELSIF NOT EXISTS (
+            SELECT 1 FROM public.calls 
+            WHERE id = p_call_id 
+              AND (sender_id = v_user_id OR receiver_id = v_user_id OR caller_id = v_user_id OR callee_id = v_user_id)
+        ) THEN
+            RAISE EXCEPTION 'Unauthorized: user is not a call participant' USING ERRCODE = '42501';
+        ELSIF NOT EXISTS (
+            SELECT 1 FROM public.calls 
+            WHERE id = p_call_id 
+              AND status IN ('ringing', 'accepted', 'ongoing')
+        ) THEN
+            RAISE EXCEPTION 'Cannot add candidate to terminal or inactive call' USING ERRCODE = '42501';
+        ELSE
+            RAISE EXCEPTION 'Maximum ICE candidate limit exceeded' USING ERRCODE = '22023';
+        END IF;
+    END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE ALL ON FUNCTION public.fn_add_call_candidate(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fn_add_call_candidate(uuid, jsonb) TO authenticated, service_role;

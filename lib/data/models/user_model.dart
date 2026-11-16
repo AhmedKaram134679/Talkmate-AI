@@ -113,14 +113,17 @@ class AppUser {
   }
 
   String get initials {
-    if (displayName == null || displayName!.isEmpty) {
+    if (displayName != null && displayName!.trim().isNotEmpty) {
+      final parts = displayName!.trim().split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return parts[0][0].toUpperCase();
+    }
+    if (email.isNotEmpty) {
       return email[0].toUpperCase();
     }
-    final parts = displayName!.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return parts[0][0].toUpperCase();
+    return '?';
   }
 
   String get statusText => status.name;
