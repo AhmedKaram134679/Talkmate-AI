@@ -695,7 +695,56 @@ test("23. SECURITY: Authenticated user cannot spoof role or reach service_role b
   });
 });
 
-test("24. SECURITY: Authenticated user cannot execute fn_protect_calls_integrity directly", async () => {
+test("24. SECURITY: Authenticated user cannot spoof request.jwt.claim.role to bypass trigger", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    const [call] = await tx`
+      INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
+      VALUES (${ALICE_ID}, ${ALICE_ID}, ${BOB_ID}, ${BOB_ID}, 'ringing', 'audio')
+      RETURNING id;
+    `;
+
+    await tx`UPDATE public.calls SET status = 'ended' WHERE id = ${call.id}`;
+
+    // Attacker attempts set_config('request.jwt.claim.role', 'service_role', true)
+    await tx`SELECT set_config('request.jwt.claim.role', 'service_role', true)`;
+
+    // Attempt to reopen call exploiting spoofed claim
+    await assertRejects(
+      async () => {
+        await tx`UPDATE public.calls SET status = 'ringing' WHERE id = ${call.id}`;
+      },
+      Error,
+      "Cannot modify call in terminal status ended"
+    );
+  });
+});
+
+test("25. SECURITY: Authenticated user cannot spoof request.jwt.claims JSON to bypass trigger", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    const [call] = await tx`
+      INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
+      VALUES (${ALICE_ID}, ${ALICE_ID}, ${BOB_ID}, ${BOB_ID}, 'ringing', 'audio')
+      RETURNING id;
+    `;
+
+    await tx`UPDATE public.calls SET status = 'ended' WHERE id = ${call.id}`;
+
+    // Attacker attempts set_config('request.jwt.claims', '{"role": "service_role"}', true)
+    await tx`SELECT set_config('request.jwt.claim.role', '', true)`;
+    await tx`SELECT set_config('request.jwt.claims', '{"role": "service_role"}', true)`;
+
+    // Attempt to reopen call exploiting spoofed claims JSON
+    await assertRejects(
+      async () => {
+        await tx`UPDATE public.calls SET status = 'ringing' WHERE id = ${call.id}`;
+      },
+      Error,
+      "Cannot modify call in terminal status ended"
+    );
+  });
+});
+
+test("26. SECURITY: Authenticated user cannot execute fn_protect_calls_integrity directly", async () => {
   await asUser(ALICE_ID, async (tx) => {
     await assertRejects(
       async () => {
