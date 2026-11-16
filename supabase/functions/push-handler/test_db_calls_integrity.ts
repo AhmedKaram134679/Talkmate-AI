@@ -252,7 +252,6 @@ test("8. UPDATE: Sender attempting to change receiver_id is BLOCKED", async () =
 });
 
 test("9. UPDATE: Sender attempting to change caller_id or sender_id is BLOCKED", async () => {
-  // Test caller_id modification in fresh transaction
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -273,7 +272,6 @@ test("9. UPDATE: Sender attempting to change caller_id or sender_id is BLOCKED",
     );
   });
 
-  // Test sender_id modification in fresh transaction
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -296,7 +294,6 @@ test("9. UPDATE: Sender attempting to change caller_id or sender_id is BLOCKED",
 });
 
 test("10. UPDATE: Receiver attempting to change sender_id or receiver_id is BLOCKED", async () => {
-  // Test receiver modifying sender_id
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -319,7 +316,6 @@ test("10. UPDATE: Receiver attempting to change sender_id or receiver_id is BLOC
     );
   });
 
-  // Test receiver modifying receiver_id
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -419,6 +415,7 @@ test("14. STATE: Caller Alice attempting to reject call is BLOCKED (Caller termi
       RETURNING id;
     `;
 
+    // Alice is caller; only receiver Bob can reject
     await assertRejects(
       async () => {
         await tx`
@@ -433,7 +430,7 @@ test("14. STATE: Caller Alice attempting to reject call is BLOCKED (Caller termi
   });
 });
 
-test("15. STATE: Legitimate call termination (status: ended) by either participant succeeds", async () => {
+test("15. STATE: Legitimate caller cancellation (ringing -> ended) succeeds", async () => {
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -441,6 +438,7 @@ test("15. STATE: Legitimate call termination (status: ended) by either participa
       RETURNING id;
     `;
 
+    // Alice legitimately cancels ringing call
     const [updated] = await tx`
       UPDATE public.calls 
       SET status = 'ended', ended_at = now()
@@ -451,7 +449,25 @@ test("15. STATE: Legitimate call termination (status: ended) by either participa
   });
 });
 
-test("16. STATE: Unknown or unsupported target statuses are rejected", async () => {
+test("16. STATE: Legitimate direct transition from ringing to ongoing succeeds", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    const [call] = await tx`
+      INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
+      VALUES (${ALICE_ID}, ${ALICE_ID}, ${BOB_ID}, ${BOB_ID}, 'ringing', 'audio')
+      RETURNING id;
+    `;
+
+    const [updated] = await tx`
+      UPDATE public.calls 
+      SET status = 'ongoing', started_at = now()
+      WHERE id = ${call.id}
+      RETURNING status;
+    `;
+    assertEquals(updated.status, "ongoing");
+  });
+});
+
+test("17. STATE: Unknown or unsupported target statuses are rejected", async () => {
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -473,7 +489,7 @@ test("16. STATE: Unknown or unsupported target statuses are rejected", async () 
   });
 });
 
-test("17. STATE: Every terminal status reopening attempt is strictly BLOCKED", async () => {
+test("18. STATE: Every terminal status reopening attempt is strictly BLOCKED", async () => {
   const terminalStatuses = ['ended', 'rejected', 'missed', 'failed'];
 
   for (const termStatus of terminalStatuses) {
@@ -531,7 +547,7 @@ test("17. STATE: Every terminal status reopening attempt is strictly BLOCKED", a
 // Group 4: WebRTC Signaling, ICE Candidates & RLS Isolation
 // ============================================================================
 
-test("18. SIGNALING: Legitimate offer, answer, and ICE candidates update properly", async () => {
+test("19. SIGNALING: Legitimate offer, answer, and ICE candidates update properly", async () => {
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -572,7 +588,39 @@ test("18. SIGNALING: Legitimate offer, answer, and ICE candidates update properl
   });
 });
 
-test("19. ISOLATION: Unrelated user Eve cannot view or alter call between Alice and Bob", async () => {
+test("20. SIGNALING: Signaling update on call with unknown status is strictly BLOCKED", async () => {
+  // If a legacy row existed with unknown status 'calling_unknown'
+  await asServiceRole(async (tx) => {
+    // service_role simulates a legacy anomaly
+    const [call] = await tx`
+      INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
+      VALUES (${ALICE_ID}, ${ALICE_ID}, ${BOB_ID}, ${BOB_ID}, 'ringing', 'audio')
+      RETURNING id;
+    `;
+
+    // Force legacy status directly as service role
+    await tx`UPDATE public.calls SET status = 'legacy_unknown' WHERE id = ${call.id}`;
+
+    // Now switch to Alice and attempt signaling-only update (status unmodified)
+    await tx`SET LOCAL ROLE authenticated`;
+    await tx`SELECT set_config('request.jwt.claim.sub', ${ALICE_ID}, true)`;
+    await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
+
+    await assertRejects(
+      async () => {
+        await tx`
+          UPDATE public.calls 
+          SET offer = '{"type": "offer"}'::jsonb
+          WHERE id = ${call.id};
+        `;
+      },
+      Error,
+      "Invalid existing call status: legacy_unknown"
+    );
+  });
+});
+
+test("21. ISOLATION: Unrelated user Eve cannot view or alter call between Alice and Bob", async () => {
   await asUser(ALICE_ID, async (tx) => {
     const [call] = await tx`
       INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
@@ -602,7 +650,7 @@ test("19. ISOLATION: Unrelated user Eve cannot view or alter call between Alice 
 // Group 5: Trusted Service Role Operations & Trigger Privilege Defense
 // ============================================================================
 
-test("20. TRUSTED SERVICE: service_role can perform automated maintenance transitions", async () => {
+test("22. TRUSTED SERVICE: service_role can perform automated maintenance transitions", async () => {
   await asServiceRole(async (tx) => {
     // service_role creates call
     const [call] = await tx`
@@ -623,7 +671,31 @@ test("20. TRUSTED SERVICE: service_role can perform automated maintenance transi
   });
 });
 
-test("21. SECURITY: Authenticated user cannot execute fn_protect_calls_integrity directly", async () => {
+test("23. SECURITY: Authenticated user cannot spoof role or reach service_role bypass", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    const [call] = await tx`
+      INSERT INTO public.calls (sender_id, caller_id, receiver_id, callee_id, status, type)
+      VALUES (${ALICE_ID}, ${ALICE_ID}, ${BOB_ID}, ${BOB_ID}, 'ringing', 'audio')
+      RETURNING id;
+    `;
+
+    await tx`UPDATE public.calls SET status = 'ended' WHERE id = ${call.id}`;
+
+    // Attacker attempts set_config('role', 'service_role', true)
+    await tx`SELECT set_config('role', 'service_role', true)`;
+
+    // Attempt to reopen call exploiting spoofed setting
+    await assertRejects(
+      async () => {
+        await tx`UPDATE public.calls SET status = 'ringing' WHERE id = ${call.id}`;
+      },
+      Error,
+      "Cannot modify call in terminal status ended"
+    );
+  });
+});
+
+test("24. SECURITY: Authenticated user cannot execute fn_protect_calls_integrity directly", async () => {
   await asUser(ALICE_ID, async (tx) => {
     await assertRejects(
       async () => {
