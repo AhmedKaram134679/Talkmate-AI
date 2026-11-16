@@ -780,7 +780,19 @@ serve(async (req) => {
           });
         }
 
-        // Overwrite any caller-supplied IDs with trusted DB values
+        // 1. Call Lifecycle Authorization: Only 'ringing' calls permit incoming call notifications
+        if (callRecord.status !== 'ringing') {
+          console.warn(`⛔ Forbidden: Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
+          return new Response(JSON.stringify({ error: `Forbidden: Call is not in ringing state (status: ${callRecord.status})` }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Overwrite any caller-supplied IDs with trusted canonical DB values
+        const canonicalCallId = String(callRecord.id);
+        payload.call_id = canonicalCallId;
+        payload.message_id = canonicalCallId;
         payload.sender_id = dbSenderId;
         payload.caller_id = dbSenderId;
         payload.receiver_id = dbReceiverId;
@@ -798,7 +810,7 @@ serve(async (req) => {
         // Query trusted room record from database
         const { data: roomRecord, error: roomError } = await supabaseAdmin
           .from("rooms")
-          .select("id, name, created_by")
+          .select("id, name, created_by, is_private, allowed_users")
           .eq("id", roomId)
           .single();
 
@@ -818,9 +830,14 @@ serve(async (req) => {
           });
         }
 
-        // Overwrite payload with trusted values
+        // Overwrite payload with trusted canonical values
+        const canonicalRoomId = String(roomRecord.id);
+        payload.id = canonicalRoomId;
+        payload.room_id = canonicalRoomId;
         payload.created_by = roomRecord.created_by;
         if (roomRecord.name) payload.name = roomRecord.name;
+        payload.is_private = roomRecord.is_private === true;
+        payload.allowed_users = Array.isArray(roomRecord.allowed_users) ? roomRecord.allowed_users : [];
 
       } else {
         // Message payload
@@ -866,12 +883,33 @@ serve(async (req) => {
     // STAGE R: SPECIALIZED CALL HANDLING (Signaling Constitution)
     if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
       console.log("📞 AI Routing: Processing Call Ringing push...");
-      const receiverId = payload.receiver_id;
-      const finalSenderId = payload.sender_id || payload.caller_id;
-      const isVideo = payload.is_video === true || payload.call_type === 'video';
       const callId = payload.call_id || message_id;
+      if (!callId) return new Response(JSON.stringify({ error: "Missing call identifier" }), { status: 400 });
 
-      if (!receiverId || !finalSenderId) return new Response(JSON.stringify({ error: "Missing receiver_id or caller_id", payload }), { status: 400 });
+      // Always fetch trusted call record to enforce lifecycle and canonical IDs
+      const { data: callRecord, error: callError } = await supabaseAdmin
+        .from("calls")
+        .select("id, sender_id, caller_id, receiver_id, callee_id, status, is_video, type")
+        .eq("id", callId)
+        .single();
+
+      if (callError || !callRecord) {
+        console.warn(`⛔ Call record not found for id ${callId}:`, callError);
+        return new Response(JSON.stringify({ error: "Referenced call record not found" }), { status: 404 });
+      }
+
+      // 1. Call Lifecycle: only 'ringing' calls may trigger push notifications
+      if (callRecord.status !== 'ringing') {
+        console.warn(`⛔ Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
+        return new Response(JSON.stringify({ error: `Call is not in ringing state (status: ${callRecord.status})` }), { status: 403 });
+      }
+
+      const canonicalCallId = String(callRecord.id);
+      const finalSenderId = callRecord.sender_id || callRecord.caller_id;
+      const receiverId = callRecord.receiver_id || callRecord.callee_id;
+      const isVideo = callRecord.is_video === true || callRecord.type === 'video' || payload.is_video === true || payload.call_type === 'video';
+
+      if (!receiverId || !finalSenderId) return new Response(JSON.stringify({ error: "Missing receiver_id or caller_id in call record", payload }), { status: 400 });
 
       // 1. Fetch Sender Name
       const { data: sender } = await supabaseAdmin.from("profiles").select("display_name, username").eq("id", finalSenderId).single();
@@ -889,7 +927,7 @@ serve(async (req) => {
           // Notification object removed for Calls to enable Data-only push (Native side handling)
           data: {
             type: 'INCOMING_CALL', // Constitutional Type
-            call_id: String(callId),
+            call_id: canonicalCallId,
             sender_id: String(finalSenderId),
             is_video: String(isVideo),
             caller_name: callerName,
@@ -923,28 +961,55 @@ serve(async (req) => {
     // STAGE R: ROOM CREATION HANDLING
     if (payloadType === 'room_created') {
       console.log("🏢 AI Routing: Processing Room Creation push...");
-      const roomName = payload.name;
-      const creatorId = payload.created_by;
-      
-      if (!roomName || !creatorId) return new Response(JSON.stringify({ error: "Missing room metadata" }), { status: 400 });
+      const targetRoomId = payload.room_id || payload.id;
+      if (!targetRoomId) return new Response(JSON.stringify({ error: "Missing room metadata: id" }), { status: 400 });
+
+      // Always fetch canonical room record from DB
+      const { data: roomRecord, error: roomError } = await supabaseAdmin
+        .from("rooms")
+        .select("id, name, created_by, is_private, allowed_users")
+        .eq("id", targetRoomId)
+        .single();
+
+      if (roomError || !roomRecord) {
+        console.warn(`⛔ Room record not found for id ${targetRoomId}:`, roomError);
+        return new Response(JSON.stringify({ error: "Room record not found" }), { status: 404 });
+      }
+
+      const canonicalRoomId = String(roomRecord.id);
+      const creatorId = roomRecord.created_by;
+      const roomName = roomRecord.name || payload.name || "A Room";
+      const isPrivate = roomRecord.is_private === true;
+      const allowedUsers: string[] = Array.isArray(roomRecord.allowed_users) ? roomRecord.allowed_users : [];
+
+      if (!creatorId) return new Response(JSON.stringify({ error: "Missing created_by in room record" }), { status: 400 });
 
       // 1. Fetch Creator Name
       const { data: creator } = await supabaseAdmin.from("profiles").select("display_name, username").eq("id", creatorId).single();
       const creatorName = creator?.display_name || creator?.username || "A user";
 
-      // 2. Fetch "Recipients" (e.g. Friends or everyone if it's a small app)
-      // For MVP: Notify everyone except the creator
-      const { data: activeUsers } = await supabaseAdmin.from("profiles").select("id").neq("id", creatorId).limit(50);
-      const recipientIds = activeUsers?.map(u => u.id) || [];
+      // 2. Authoritative Recipient Resolution
+      let recipientIds: string[] = [];
+
+      if (isPrivate) {
+        // For private rooms: ONLY users explicitly listed in allowed_users, strictly excluding creator
+        recipientIds = allowedUsers.filter((uid: string) => uid && uid !== creatorId);
+        console.log(`🔒 Private room ${canonicalRoomId}: ${recipientIds.length} authorized recipients from allowed_users`);
+      } else {
+        // For public rooms: Follow existing product rules (active users excluding creator)
+        const { data: activeUsers } = await supabaseAdmin.from("profiles").select("id").neq("id", creatorId).limit(50);
+        recipientIds = activeUsers?.map(u => u.id) || [];
+        console.log(`🌐 Public room ${canonicalRoomId}: ${recipientIds.length} recipients`);
+      }
 
       if (recipientIds.length === 0) return new Response(JSON.stringify({ message: "No recipients for room" }));
 
-      // 3. Fetch Devices
+      // 3. Fetch Devices for eligible recipients
       const { data: devices } = await supabaseAdmin.from("user_devices").select("*").in("user_id", recipientIds).eq("is_active", true);
 
       if (!devices || devices.length === 0) return new Response(JSON.stringify({ message: "No devices found" }));
 
-      // 4. Send pushes
+      // 4. Send pushes with CANONICAL room_id
       const results = await Promise.all(devices.map(async (d) => {
         const message = {
           token: d.fcm_token,
@@ -954,7 +1019,7 @@ serve(async (req) => {
           },
           data: {
             type: 'room_created',
-            room_id: String(payload.id),
+            room_id: canonicalRoomId,
             click_action: "FLUTTER_NOTIFICATION_CLICK"
           }
         };
