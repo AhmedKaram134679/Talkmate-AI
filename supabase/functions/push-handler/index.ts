@@ -724,7 +724,12 @@ serve(async (req) => {
 
   try {
     let payload = await req.json();
-    console.log("📦 AI Routing: Received Payload:", payload);
+    console.log("Push request received", {
+      type: payload?.type,
+      message_id: payload?.message_id || payload?.record?.id || payload?.record?.message_id,
+      chat_id: payload?.chat_id || payload?.record?.chat_id,
+      has_record: Boolean(payload?.record),
+    });
 
     // STAGE R: UNWRAP ENVELOPE (From SQL Triggers)
     if (payload.record) {
@@ -736,7 +741,12 @@ serve(async (req) => {
         // Reaction specific mappings
         sender_id: payload.record.user_id || payload.record.sender_id,
       };
-      console.log("📦 AI Routing: Unwrapped Payload:", payload);
+      console.log("Push payload unwrapped", {
+        type: payload.type,
+        message_id: payload.message_id,
+        chat_id: payload.chat_id,
+        content_type: payload.content_type,
+      });
     }
 
     const { chat_id, sender_id, message_id, content_type, text_content, priority: payloadPriority, force_fcm, type: payloadType } = payload;
@@ -2679,7 +2689,7 @@ serve(async (req) => {
                     const state = res.success ? 'delivered' : 'failed';
                     
                     if (res.success) {
-                        console.log(`✅ FCM Success for user ${target.recipient_id} (Token: ${target.token?.substring(0, 10)}...)`);
+                        console.log(`✅ FCM Success for user ${target.recipient_id}`);
                     }
                     
                     // [AUTO-HEAL]: If FCM says the token is invalid or not registered, deactivate the device
