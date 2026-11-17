@@ -1,6 +1,6 @@
 // Integration test helpers for Supabase-backed repositories.
 // To enable these tests, set environment variable TALKMATE_IT=1 and configure
-// staging credentials (e.g. TALKMATE_STAGING_URL, TALKMATE_STAGING_ANON_KEY).
+// staging credentials (e.g. TALKMATE_STAGING_URL, TALKMATE_STAGING_PUBLISHABLE_KEY).
 // Example (PowerShell):
 //   $env:TALKMATE_IT=1; flutter test test/integration
 
@@ -18,10 +18,12 @@ class ItEnv {
   static String get supabaseUrl =>
       Platform.environment['TALKMATE_STAGING_URL'] ?? ApiConstants.supabaseUrl;
 
-  static String get supabaseAnonKey =>
+  static String get supabasePublishableKey =>
       Platform.environment['TALKMATE_STAGING_PUBLISHABLE_KEY'] ??
-      Platform.environment['TALKMATE_STAGING_ANON_KEY'] ??
       ApiConstants.supabasePublishableKey;
+
+  /// Backward-compatibility alias for [supabasePublishableKey].
+  static String get supabaseAnonKey => supabasePublishableKey;
 
   static String get testUserEmail =>
       Platform.environment['TALKMATE_IT_USER_EMAIL'] ?? 'it_tester@talkmate.staging';

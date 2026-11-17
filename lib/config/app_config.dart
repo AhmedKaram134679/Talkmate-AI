@@ -17,6 +17,9 @@ class AppConfig {
   static const String supabaseUrl = 'https://icdbbfsjbslzctshxytd.supabase.co';
   static const String supabasePublishableKey =
       'sb_publishable_loaosurb1A-U9xeP_5PjDw_RNc3OEBs';
+
+  /// Backward-compatibility alias for [supabasePublishableKey].
+  @Deprecated('Use supabasePublishableKey instead.')
   static const String supabaseAnonKey = supabasePublishableKey;
 
   static const Duration apiTimeout = Duration(seconds: 30);

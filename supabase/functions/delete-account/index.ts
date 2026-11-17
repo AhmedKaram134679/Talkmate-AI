@@ -16,6 +16,27 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function parseRequiredKey(envVarName: string): string {
+  const raw = Deno.env.get(envVarName);
+  if (!raw || typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error(`Missing or empty environment configuration: ${envVarName}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    throw new Error(`Malformed JSON in environment dictionary: ${envVarName}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid format in ${envVarName}: expected key-value object mapping`);
+  }
+  const defaultKey = (parsed as Record<string, unknown>).default;
+  if (!defaultKey || typeof defaultKey !== "string" || defaultKey.trim().length === 0) {
+    throw new Error(`No valid 'default' key found in ${envVarName}`);
+  }
+  return defaultKey.trim();
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -30,13 +51,10 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const publishableKeysRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
-    const secretKeysRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
-
-    if (!supabaseUrl || !publishableKeysRaw || !secretKeysRaw) {
+    if (!supabaseUrl || supabaseUrl.trim().length === 0) {
       console.error(JSON.stringify({
         event: "CONFIG_ERROR",
-        message: "Missing essential Supabase environment configuration (SUPABASE_PUBLISHABLE_KEYS, SUPABASE_SECRET_KEYS)",
+        message: "Missing SUPABASE_URL environment configuration",
         timestamp: new Date().toISOString(),
       }));
       return new Response(
@@ -45,11 +63,23 @@ serve(async (req: Request) => {
       );
     }
 
-    const publishableKeys = JSON.parse(publishableKeysRaw);
-    const secretKeys = JSON.parse(secretKeysRaw);
+    let publishableKey: string;
+    let secretKey: string;
 
-    const publishableKey = publishableKeys.default;
-    const secretKey = secretKeys.default;
+    try {
+      publishableKey = parseRequiredKey("SUPABASE_PUBLISHABLE_KEYS");
+      secretKey = parseRequiredKey("SUPABASE_SECRET_KEYS");
+    } catch (keyErr) {
+      console.error(JSON.stringify({
+        event: "CONFIG_ERROR",
+        message: keyErr instanceof Error ? keyErr.message : "Key configuration parsing failed",
+        timestamp: new Date().toISOString(),
+      }));
+      return new Response(
+        JSON.stringify({ error: "Internal server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // 1. Authentication Header Extraction
     const authHeader = req.headers.get("Authorization");

@@ -12,12 +12,14 @@ import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.t
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://icdbbfsjbslzctshxytd.supabase.co";
 function getPublishableKey(): string {
   const directKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
-  if (directKey) return directKey;
+  if (directKey && directKey.trim().length > 0) return directKey.trim();
   const dictRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
-  if (dictRaw) {
+  if (dictRaw && dictRaw.trim().length > 0) {
     try {
       const parsed = JSON.parse(dictRaw);
-      if (parsed?.default) return parsed.default;
+      if (parsed?.default && typeof parsed.default === "string" && parsed.default.trim().length > 0) {
+        return parsed.default.trim();
+      }
     } catch (_) {}
   }
   return "";
@@ -25,12 +27,14 @@ function getPublishableKey(): string {
 
 function getSecretKey(): string {
   const directKey = Deno.env.get("SUPABASE_SECRET_KEY");
-  if (directKey) return directKey;
+  if (directKey && directKey.trim().length > 0) return directKey.trim();
   const dictRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
-  if (dictRaw) {
+  if (dictRaw && dictRaw.trim().length > 0) {
     try {
       const parsed = JSON.parse(dictRaw);
-      if (parsed?.default) return parsed.default;
+      if (parsed?.default && typeof parsed.default === "string" && parsed.default.trim().length > 0) {
+        return parsed.default.trim();
+      }
     } catch (_) {}
   }
   return "";

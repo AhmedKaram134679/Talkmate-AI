@@ -102,3 +102,92 @@ Deno.test("StructuredLogger: safeId masks UUIDs properly", () => {
   assertEquals(StructuredLogger.safeId(null), "none");
   assertEquals(StructuredLogger.safeId("short"), "shor...");
 });
+
+// Helper from push-handler & delete-account
+function parseRequiredKeyFromRaw(raw: string | undefined | null, envVarName: string): string {
+  if (!raw || typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error(`Missing or empty environment configuration: ${envVarName}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    throw new Error(`Malformed JSON in environment dictionary: ${envVarName}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid format in ${envVarName}: expected key-value object mapping`);
+  }
+  const defaultKey = (parsed as Record<string, unknown>).default;
+  if (!defaultKey || typeof defaultKey !== "string" || defaultKey.trim().length === 0) {
+    throw new Error(`No valid 'default' key found in ${envVarName}`);
+  }
+  return defaultKey.trim();
+}
+
+Deno.test("Key Parsing: Valid key dictionary succeeds", () => {
+  const validJson = JSON.stringify({ default: "sb_secret_test_12345" });
+  const key = parseRequiredKeyFromRaw(validJson, "SUPABASE_SECRET_KEYS");
+  assertEquals(key, "sb_secret_test_12345");
+});
+
+Deno.test("Key Parsing: Missing or empty input throws fail-closed error", () => {
+  let threw = false;
+  try {
+    parseRequiredKeyFromRaw(undefined, "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("Missing or empty"), true);
+  }
+  assertEquals(threw, true);
+
+  threw = false;
+  try {
+    parseRequiredKeyFromRaw("", "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("Missing or empty"), true);
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("Key Parsing: Malformed JSON throws fail-closed error", () => {
+  let threw = false;
+  try {
+    parseRequiredKeyFromRaw("{ invalid json", "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("Malformed JSON"), true);
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("Key Parsing: Non-object or array throws fail-closed error", () => {
+  let threw = false;
+  try {
+    parseRequiredKeyFromRaw(JSON.stringify(["sb_secret_array"]), "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("Invalid format"), true);
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("Key Parsing: Missing or empty default key throws fail-closed error", () => {
+  let threw = false;
+  try {
+    parseRequiredKeyFromRaw(JSON.stringify({ secondary: "sb_secret_2" }), "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("No valid 'default' key"), true);
+  }
+  assertEquals(threw, true);
+
+  threw = false;
+  try {
+    parseRequiredKeyFromRaw(JSON.stringify({ default: "   " }), "SUPABASE_SECRET_KEYS");
+  } catch (e: any) {
+    threw = true;
+    assertEquals(e.message.includes("No valid 'default' key"), true);
+  }
+  assertEquals(threw, true);
+});

@@ -140,13 +140,42 @@ if (getApps().length === 0) {
   });
 }
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const secretKeys = JSON.parse(
-  Deno.env.get("SUPABASE_SECRET_KEYS")!
-);
-const secretKey = secretKeys.default;
+function parseRequiredKey(envVarName: string): string {
+  const raw = Deno.env.get(envVarName);
+  if (!raw || typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error(`Missing or empty environment configuration: ${envVarName}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    throw new Error(`Malformed JSON in environment dictionary: ${envVarName}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid format in ${envVarName}: expected key-value object mapping`);
+  }
+  const defaultKey = (parsed as Record<string, unknown>).default;
+  if (!defaultKey || typeof defaultKey !== "string" || defaultKey.trim().length === 0) {
+    throw new Error(`No valid 'default' key found in ${envVarName}`);
+  }
+  return defaultKey.trim();
+}
 
-// Admin client to bypass RLS
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+if (!supabaseUrl || supabaseUrl.trim().length === 0) {
+  StructuredLogger.error("CONFIG_ERROR", "Missing SUPABASE_URL environment configuration");
+  throw new Error("Missing SUPABASE_URL configuration");
+}
+
+let secretKey = "";
+try {
+  secretKey = parseRequiredKey("SUPABASE_SECRET_KEYS");
+} catch (err) {
+  StructuredLogger.error("CONFIG_ERROR", err instanceof Error ? err.message : "Secret key configuration failed");
+  throw new Error("Failed to initialize Supabase secret key configuration");
+}
+
+// Admin client to bypass RLS using the validated Secret key
 const supabaseAdmin = createClient(supabaseUrl, secretKey, {
   auth: { persistSession: false },
 });
