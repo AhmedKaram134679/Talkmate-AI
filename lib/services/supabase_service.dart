@@ -11,7 +11,7 @@ class SupabaseService {
   Future<void> initialize() async {
     await Supabase.initialize(
       url: ApiConstants.supabaseUrl,
-      anonKey: ApiConstants.supabaseAnonKey,
+      anonKey: ApiConstants.supabasePublishableKey,
     );
   }
 }

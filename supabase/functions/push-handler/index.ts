@@ -141,10 +141,13 @@ if (getApps().length === 0) {
 }
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const secretKeys = JSON.parse(
+  Deno.env.get("SUPABASE_SECRET_KEYS")!
+);
+const secretKey = secretKeys.default;
 
 // Admin client to bypass RLS
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+const supabaseAdmin = createClient(supabaseUrl, secretKey, {
   auth: { persistSession: false },
 });
 
@@ -783,7 +786,7 @@ serve(async (req) => {
   let callerRole: string | null = null;
   let callerUserId: string | null = null;
 
-  if (token === supabaseKey) {
+  if (token === secretKey) {
     callerRole = "service_role";
   } else {
     // Verify user JWT with Supabase Auth

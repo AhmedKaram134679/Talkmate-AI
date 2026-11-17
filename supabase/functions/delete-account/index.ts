@@ -30,13 +30,13 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const publishableKeysRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+    const secretKeysRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
 
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+    if (!supabaseUrl || !publishableKeysRaw || !secretKeysRaw) {
       console.error(JSON.stringify({
         event: "CONFIG_ERROR",
-        message: "Missing essential Supabase environment configuration",
+        message: "Missing essential Supabase environment configuration (SUPABASE_PUBLISHABLE_KEYS, SUPABASE_SECRET_KEYS)",
         timestamp: new Date().toISOString(),
       }));
       return new Response(
@@ -44,6 +44,12 @@ serve(async (req: Request) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const publishableKeys = JSON.parse(publishableKeysRaw);
+    const secretKeys = JSON.parse(secretKeysRaw);
+
+    const publishableKey = publishableKeys.default;
+    const secretKey = secretKeys.default;
 
     // 1. Authentication Header Extraction
     const authHeader = req.headers.get("Authorization");
@@ -55,7 +61,7 @@ serve(async (req: Request) => {
     }
 
     // 2. Validate user identity using Supabase Auth
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const userClient = createClient(supabaseUrl, publishableKey, {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false },
     });
@@ -93,7 +99,7 @@ serve(async (req: Request) => {
     }
 
     // 4. Initialize privileged admin client for authorized server-side operations
-    const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    const adminClient = createClient(supabaseUrl, secretKey, {
       auth: { persistSession: false },
     });
 

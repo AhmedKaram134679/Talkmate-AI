@@ -41,7 +41,7 @@ A secure, intelligent, multi-platform real-time communication application built 
 Create an `.env` or configure runtime values for Supabase and Firebase:
 ```properties
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 ```
 
 For Android production release builds, copy the template and configure your keystore:

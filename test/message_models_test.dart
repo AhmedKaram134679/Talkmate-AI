@@ -116,7 +116,7 @@ void main() {
     } catch (_) {
       await Supabase.initialize(
         url: ApiConstants.supabaseUrl,
-        anonKey: ApiConstants.supabaseAnonKey,
+        anonKey: ApiConstants.supabasePublishableKey,
       );
     }
   });

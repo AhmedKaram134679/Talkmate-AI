@@ -5,11 +5,39 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://icdbbfsjbslzctshxytd.supabase.co";
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+function getPublishableKey(): string {
+  const directKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (directKey) return directKey;
+  const dictRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw);
+      if (parsed?.default) return parsed.default;
+    } catch (_) {}
+  }
+  return "";
+}
 
-if (!ANON_KEY || !SERVICE_ROLE_KEY) {
-  throw new Error("SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY must be provided via environment variables.");
+function getSecretKey(): string {
+  const directKey = Deno.env.get("SUPABASE_SECRET_KEY");
+  if (directKey) return directKey;
+  const dictRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw);
+      if (parsed?.default) return parsed.default;
+    } catch (_) {}
+  }
+  return "";
+}
+
+const PUBLISHABLE_KEY = getPublishableKey();
+const SECRET_KEY = getSecretKey();
+
+if (!PUBLISHABLE_KEY || !SECRET_KEY) {
+  throw new Error(
+    "Security requirement violation: SUPABASE_PUBLISHABLE_KEY (or SUPABASE_PUBLISHABLE_KEYS) and SUPABASE_SECRET_KEY (or SUPABASE_SECRET_KEYS) must be provided via environment variables. Legacy keys are rejected."
+  );
 }
 
 Deno.test("SEC-02: Complete account deletion removes Auth identity and database records", async () => {
@@ -20,8 +48,8 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
   const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: "POST",
     headers: {
-      "apikey": SERVICE_ROLE_KEY,
-      "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+      "apikey": SECRET_KEY,
+      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -42,7 +70,7 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     const loginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY,
+        "apikey": PUBLISHABLE_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -70,7 +98,7 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     const crossDeleteRes = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY,
+        "apikey": PUBLISHABLE_KEY,
         "Authorization": `Bearer ${userJwt}`,
         "Content-Type": "application/json",
       },
@@ -85,7 +113,7 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     const deleteRes = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY,
+        "apikey": PUBLISHABLE_KEY,
         "Authorization": `Bearer ${userJwt}`,
         "Content-Type": "application/json",
       },
@@ -100,8 +128,8 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     const checkAuthRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: "GET",
       headers: {
-        "apikey": SERVICE_ROLE_KEY,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SECRET_KEY,
+        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
 
@@ -116,7 +144,7 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     const reloginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY,
+        "apikey": PUBLISHABLE_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -136,8 +164,8 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
       const cleanup = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
         method: "DELETE",
         headers: {
-          "apikey": SERVICE_ROLE_KEY,
-          "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+          "apikey": SECRET_KEY,
+          "Authorization": `Bearer ${SECRET_KEY}`,
         },
       });
       await cleanup.text();

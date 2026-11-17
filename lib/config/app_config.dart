@@ -15,8 +15,9 @@ class AppConfig {
 
   // Supabase Configuration
   static const String supabaseUrl = 'https://icdbbfsjbslzctshxytd.supabase.co';
-  static const String supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljZGJiZnNqYnNsemN0c2h4eXRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0Mjg2NjgsImV4cCI6MjA5NjAwNDY2OH0.RXHSRZeTalHY3shnFuoHrkaS2gYT4XqgJzgfmkUschw';
+  static const String supabasePublishableKey =
+      'sb_publishable_loaosurb1A-U9xeP_5PjDw_RNc3OEBs';
+  static const String supabaseAnonKey = supabasePublishableKey;
 
   static const Duration apiTimeout = Duration(seconds: 30);
 

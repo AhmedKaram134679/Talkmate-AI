@@ -10,11 +10,39 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://icdbbfsjbslzctshxytd.supabase.co";
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+function getPublishableKey(): string {
+  const directKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (directKey) return directKey;
+  const dictRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw);
+      if (parsed?.default) return parsed.default;
+    } catch (_) {}
+  }
+  return "";
+}
 
-if (!ANON_KEY || !SERVICE_ROLE_KEY) {
-  throw new Error("SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY must be provided via environment variables.");
+function getSecretKey(): string {
+  const directKey = Deno.env.get("SUPABASE_SECRET_KEY");
+  if (directKey) return directKey;
+  const dictRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw);
+      if (parsed?.default) return parsed.default;
+    } catch (_) {}
+  }
+  return "";
+}
+
+const PUBLISHABLE_KEY = getPublishableKey();
+const SECRET_KEY = getSecretKey();
+
+if (!PUBLISHABLE_KEY || !SECRET_KEY) {
+  throw new Error(
+    "Security requirement violation: SUPABASE_PUBLISHABLE_KEY (or SUPABASE_PUBLISHABLE_KEYS) and SUPABASE_SECRET_KEY (or SUPABASE_SECRET_KEYS) must be provided via environment variables. Legacy keys are rejected."
+  );
 }
 
 interface TestUser {
@@ -30,8 +58,8 @@ async function createAndLoginUser(label: string): Promise<TestUser> {
   const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: "POST",
     headers: {
-      "apikey": SERVICE_ROLE_KEY!,
-      "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+      "apikey": SECRET_KEY!,
+      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -48,7 +76,7 @@ async function createAndLoginUser(label: string): Promise<TestUser> {
   const loginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: {
-      "apikey": ANON_KEY!,
+      "apikey": PUBLISHABLE_KEY!,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ email, password }),
@@ -69,8 +97,8 @@ async function deleteUser(id: string) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, {
       method: "DELETE",
       headers: {
-        "apikey": SERVICE_ROLE_KEY!,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SECRET_KEY!,
+        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
     await res.text();
@@ -94,8 +122,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const convRes = await fetch(`${SUPABASE_URL}/rest/v1/conversations`, {
       method: "POST",
       headers: {
-        "apikey": SERVICE_ROLE_KEY!,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SECRET_KEY!,
+        "Authorization": `Bearer ${SECRET_KEY}`,
         "Content-Type": "application/json",
         "Prefer": "return=representation",
       },
@@ -113,8 +141,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const partsRes = await fetch(`${SUPABASE_URL}/rest/v1/conversation_participants`, {
       method: "POST",
       headers: {
-        "apikey": SERVICE_ROLE_KEY!,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SECRET_KEY!,
+        "Authorization": `Bearer ${SECRET_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([
@@ -132,7 +160,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/talkmate/${groupFilePath}`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${alice.token}`,
         "Content-Type": "image/jpeg",
       },
@@ -146,7 +174,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const aliceGet = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${groupFilePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${alice.token}`,
       },
     });
@@ -158,7 +186,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const bobGet = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${groupFilePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${bob.token}`,
       },
     });
@@ -170,7 +198,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const charlieGet = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${groupFilePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${charlie.token}`,
       },
     });
@@ -185,7 +213,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const charlieList = await fetch(`${SUPABASE_URL}/storage/v1/object/list/talkmate`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${charlie.token}`,
         "Content-Type": "application/json",
       },
@@ -202,8 +230,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const removeDavid = await fetch(`${SUPABASE_URL}/rest/v1/conversation_participants?conversation_id=eq.${convId}&user_id=eq.${david.id}`, {
       method: "DELETE",
       headers: {
-        "apikey": SERVICE_ROLE_KEY!,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SECRET_KEY!,
+        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
     assertEquals(removeDavid.status, 204, "Failed to remove David from participants");
@@ -212,7 +240,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const davidGetAfterRemoval = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${groupFilePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${david.token}`,
       },
     });
@@ -226,7 +254,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const charlieUpload = await fetch(`${SUPABASE_URL}/storage/v1/object/talkmate/groups/${convId}/charlie_exploit.jpg`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${charlie.token}`,
         "Content-Type": "image/jpeg",
       },
@@ -242,7 +270,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const charlieDelete = await fetch(`${SUPABASE_URL}/storage/v1/object/talkmate/${groupFilePath}`, {
       method: "DELETE",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${charlie.token}`,
       },
     });
@@ -252,7 +280,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const checkStillExists = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${groupFilePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${alice.token}`,
       },
     });
@@ -264,7 +292,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const alicePrivateUpload = await fetch(`${SUPABASE_URL}/storage/v1/object/talkmate/${alicePrivatePath}`, {
       method: "POST",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${alice.token}`,
         "Content-Type": "text/plain",
       },
@@ -277,7 +305,7 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
     const bobReadAlicePrivate = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/talkmate/${alicePrivatePath}`, {
       method: "GET",
       headers: {
-        "apikey": ANON_KEY!,
+        "apikey": PUBLISHABLE_KEY!,
         "Authorization": `Bearer ${bob.token}`,
       },
     });
@@ -293,8 +321,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
         const delStorage = await fetch(`${SUPABASE_URL}/storage/v1/object/talkmate`, {
           method: "DELETE",
           headers: {
-            "apikey": SERVICE_ROLE_KEY!,
-            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+            "apikey": SECRET_KEY!,
+            "Authorization": `Bearer ${SECRET_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -308,8 +336,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
         const delParts = await fetch(`${SUPABASE_URL}/rest/v1/conversation_participants?conversation_id=eq.${convId}`, {
           method: "DELETE",
           headers: {
-            "apikey": SERVICE_ROLE_KEY!,
-            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+            "apikey": SECRET_KEY!,
+            "Authorization": `Bearer ${SECRET_KEY}`,
           },
         });
         await delParts.text();
@@ -317,8 +345,8 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
         const delConv = await fetch(`${SUPABASE_URL}/rest/v1/conversations?id=eq.${convId}`, {
           method: "DELETE",
           headers: {
-            "apikey": SERVICE_ROLE_KEY!,
-            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+            "apikey": SECRET_KEY!,
+            "Authorization": `Bearer ${SECRET_KEY}`,
           },
         });
         await delConv.text();

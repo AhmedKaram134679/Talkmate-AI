@@ -19,7 +19,9 @@ class ItEnv {
       Platform.environment['TALKMATE_STAGING_URL'] ?? ApiConstants.supabaseUrl;
 
   static String get supabaseAnonKey =>
-      Platform.environment['TALKMATE_STAGING_ANON_KEY'] ?? ApiConstants.supabaseAnonKey;
+      Platform.environment['TALKMATE_STAGING_PUBLISHABLE_KEY'] ??
+      Platform.environment['TALKMATE_STAGING_ANON_KEY'] ??
+      ApiConstants.supabasePublishableKey;
 
   static String get testUserEmail =>
       Platform.environment['TALKMATE_IT_USER_EMAIL'] ?? 'it_tester@talkmate.staging';
