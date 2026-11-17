@@ -1,21 +1,19 @@
 import 'package:flutter/foundation.dart';
 
 class ForensicLogger {
-  /// Sanitize remote URLs by stripping query parameters (such as temporary HMAC signed tokens)
+  /// Sanitize remote URLs by stripping user credentials (username/password),
+  /// HMAC signed query parameters (tokens), and URL fragments.
   static String sanitizeUrl(String? url) {
     if (url == null || url.isEmpty || url == 'N/A') return 'N/A';
     try {
       final uri = Uri.parse(url);
-      if (uri.hasQuery || uri.hasFragment) {
-        return Uri(
-          scheme: uri.scheme.isNotEmpty ? uri.scheme : null,
-          userInfo: uri.userInfo.isNotEmpty ? uri.userInfo : null,
-          host: uri.host.isNotEmpty ? uri.host : null,
-          port: uri.hasPort ? uri.port : null,
-          path: uri.path,
-        ).toString();
-      }
-      return url;
+      return Uri(
+        scheme: uri.scheme.isNotEmpty ? uri.scheme : null,
+        userInfo: null, // Strictly remove credentials
+        host: uri.host.isNotEmpty ? uri.host : null,
+        port: uri.hasPort ? uri.port : null,
+        path: uri.path,
+      ).toString();
     } catch (_) {
       return '[REDACTED_URL]';
     }

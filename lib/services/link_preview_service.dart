@@ -9,12 +9,14 @@ class LinkPreviewData {
   final String? title;
   final String? description;
   final String? imageUrl;
+  final Uint8List? imageBytes;
 
   LinkPreviewData({
     required this.url,
     this.title,
     this.description,
     this.imageUrl,
+    this.imageBytes,
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +24,7 @@ class LinkPreviewData {
         'title': title,
         'description': description,
         'imageUrl': imageUrl,
+        if (imageBytes != null) 'imageBytes': base64Encode(imageBytes!),
       };
 
   static LinkPreviewData fromJson(Map<String, dynamic> json) => LinkPreviewData(
@@ -29,6 +32,9 @@ class LinkPreviewData {
         title: json['title'] as String?,
         description: json['description'] as String?,
         imageUrl: json['imageUrl'] as String?,
+        imageBytes: json['imageBytes'] != null
+            ? base64Decode(json['imageBytes'] as String)
+            : null,
       );
 }
 
@@ -37,9 +43,11 @@ class LinkPreviewService {
   static final LinkPreviewService instance = LinkPreviewService._();
 
   static const _cacheKeyPrefix = 'link_preview_cache_';
-  static const int _maxResponseBytes = 64 * 1024; // 64 KB limit to prevent memory exhaustion
+  static const int _maxResponseBytes = 64 * 1024; // 64 KB limit for HTML
+  static const int _maxImageBytes = 256 * 1024; // 256 KB limit for Open Graph preview images
   static const int _maxRedirects = 3;
   static const Duration _connectTimeout = Duration(seconds: 4);
+  static const Duration _totalTimeout = Duration(seconds: 6);
 
   /// Check whether an IP address belongs to loopback, private, link-local, multicast, or reserved ranges
   static bool isPrivateOrLocalAddress(InternetAddress address) {
@@ -64,7 +72,7 @@ class LinkPreviewService {
       // 127.0.0.0/8 (Loopback)
       if (b0 == 127) return true;
 
-      // 169.254.0.0/16 (Link Local)
+      // 169.254.0.0/16 (Link Local / Cloud metadata)
       if (b0 == 169 && b1 == 254) return true;
 
       // 172.16.0.0/12 (Private: 172.16.0.0 - 172.31.255.255)
@@ -214,7 +222,7 @@ class LinkPreviewService {
         return null;
       }
 
-      final html = await _fetchHtmlSecurely(initialUri);
+      final html = await _fetchHtmlSecurely(initialUri).timeout(_totalTimeout);
       if (html == null || html.isEmpty) return null;
 
       String? extractMeta(String pattern) {
@@ -240,13 +248,14 @@ class LinkPreviewService {
         r'''<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']''',
       );
 
-      // Validate extracted image URL to prevent client-side resource probing
+      Uint8List? imageBytes;
       if (image != null && image.isNotEmpty) {
-        final parsedImage = Uri.tryParse(image);
-        if (parsedImage == null ||
-            (parsedImage.hasScheme &&
-                parsedImage.scheme != 'http' &&
-                parsedImage.scheme != 'https')) {
+        final resolvedImageUri = initialUri.resolve(image);
+        if (await isSafeTarget(resolvedImageUri)) {
+          // Fetch image bytes securely through same protected pipeline
+          imageBytes = await _fetchImageBytesSecurely(resolvedImageUri)
+              .timeout(const Duration(seconds: 4), onTimeout: () => null);
+        } else {
           image = null;
         }
       }
@@ -256,6 +265,7 @@ class LinkPreviewService {
         title: title,
         description: description,
         imageUrl: image,
+        imageBytes: imageBytes,
       );
 
       await prefs.setString(
@@ -272,7 +282,7 @@ class LinkPreviewService {
     }
   }
 
-  /// Securely fetch HTML using streaming, timeout, content-type checks, and strict redirect validation
+  /// Securely fetch HTML using streaming, timeout, strict Content-Type checks, and redirect validation
   Future<String?> _fetchHtmlSecurely(Uri initialUri) async {
     HttpClient? client;
     try {
@@ -285,7 +295,7 @@ class LinkPreviewService {
 
       while (redirects <= _maxRedirects) {
         final request = await client.getUrl(currentUri).timeout(_connectTimeout);
-        request.followRedirects = false; // We handle redirects manually to validate each hop
+        request.followRedirects = false; // Handle redirects manually to re-verify each hop
         request.headers.set(HttpHeaders.acceptHeader, 'text/html, application/xhtml+xml');
         request.headers.set(HttpHeaders.userAgentHeader, 'TalkMate-LinkPreview/1.0');
 
@@ -323,17 +333,20 @@ class LinkPreviewService {
           return null;
         }
 
-        // Validate Content-Type: only text/html and application/xhtml+xml accepted
+        // Strict Content-Type validation: Missing or non-HTML types are rejected
         final contentType = response.headers.contentType;
-        if (contentType != null) {
-          final mime = contentType.mimeType.toLowerCase();
-          if (mime != 'text/html' && mime != 'application/xhtml+xml') {
-            await response.drain();
-            return null;
-          }
+        if (contentType == null) {
+          await response.drain();
+          return null;
         }
 
-        // Read stream with strict size limit to prevent memory exhaustion
+        final mime = contentType.mimeType.toLowerCase().trim();
+        if (mime != 'text/html' && mime != 'application/xhtml+xml') {
+          await response.drain();
+          return null;
+        }
+
+        // Read stream with strict byte size limit to prevent memory exhaustion
         final builder = BytesBuilder(copy: false);
         await for (final chunk in response) {
           if (builder.length + chunk.length > _maxResponseBytes) {
@@ -352,6 +365,96 @@ class LinkPreviewService {
 
         // Decode HTML using UTF-8 with malformed fallback
         return utf8.decode(bytes, allowMalformed: true);
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  /// Securely fetch preview image bytes without exposing UI to direct untrusted network fetching
+  Future<Uint8List?> _fetchImageBytesSecurely(Uri initialUri) async {
+    HttpClient? client;
+    try {
+      client = HttpClient();
+      client.connectionTimeout = _connectTimeout;
+      client.autoUncompress = true;
+
+      Uri currentUri = initialUri;
+      int redirects = 0;
+
+      while (redirects <= _maxRedirects) {
+        final request = await client.getUrl(currentUri).timeout(_connectTimeout);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'image/jpeg, image/png, image/webp, image/gif');
+        request.headers.set(HttpHeaders.userAgentHeader, 'TalkMate-LinkPreview/1.0');
+
+        final response = await request.close().timeout(_connectTimeout);
+
+        if (response.isRedirect ||
+            (response.statusCode >= 300 && response.statusCode < 400)) {
+          redirects++;
+          if (redirects > _maxRedirects) {
+            await response.drain();
+            return null;
+          }
+
+          final location = response.headers.value(HttpHeaders.locationHeader);
+          if (location == null || location.isEmpty) {
+            await response.drain();
+            return null;
+          }
+
+          final redirectUri = currentUri.resolve(location);
+          await response.drain();
+
+          if (!await isSafeTarget(redirectUri)) {
+            return null;
+          }
+
+          currentUri = redirectUri;
+          continue;
+        }
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          await response.drain();
+          return null;
+        }
+
+        // Strict image MIME validation
+        final contentType = response.headers.contentType;
+        if (contentType == null) {
+          await response.drain();
+          return null;
+        }
+
+        final mime = contentType.mimeType.toLowerCase().trim();
+        if (mime != 'image/jpeg' &&
+            mime != 'image/png' &&
+            mime != 'image/webp' &&
+            mime != 'image/gif') {
+          await response.drain();
+          return null;
+        }
+
+        final builder = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (builder.length + chunk.length > _maxImageBytes) {
+            final remaining = _maxImageBytes - builder.length;
+            if (remaining > 0) {
+              builder.add(chunk.sublist(0, remaining));
+            }
+            break;
+          } else {
+            builder.add(chunk);
+          }
+        }
+
+        final bytes = builder.takeBytes();
+        return bytes.isNotEmpty ? bytes : null;
       }
 
       return null;

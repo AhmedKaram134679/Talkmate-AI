@@ -84,23 +84,32 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
     setState(() => _creating = true);
     try {
-      String? groupPhotoUrl;
-      if (_pickedImage != null) {
-        final path = 'groups/temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final (url, _) = await _storage.uploadFile(
-          file: _pickedImage!,
-          path: path,
-        );
-        groupPhotoUrl = url;
-      }
-
+      // 1. Create the group first to obtain the canonical chat ID
       final participantIds = _selectedUserIds.toList()..add(_auth.userId);
       final chat = await _chatRepo.createChat(
         participantIds: participantIds,
         isGroup: true,
         groupName: name,
-        groupPhotoUrl: groupPhotoUrl,
       );
+
+      // 2. Upload avatar to the canonical group-specific path: groups/{chatId}/avatar_{timestamp}.jpg
+      if (_pickedImage != null) {
+        final avatarPath =
+            'groups/${chat.id}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        try {
+          await _storage.uploadFile(
+            file: _pickedImage!,
+            path: avatarPath,
+          );
+          // 3. Store canonical storage path in database
+          await _chatRepo.updateGroupMeta(
+            chatId: chat.id,
+            photoUrl: avatarPath,
+          );
+        } catch (uploadError) {
+          debugPrint('⚠️ Group avatar upload error (non-fatal): $uploadError');
+        }
+      }
 
       final uiChat = ui_models.ChatModel(
         id: chat.id,

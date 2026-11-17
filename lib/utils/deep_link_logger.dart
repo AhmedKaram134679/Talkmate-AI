@@ -4,11 +4,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 /// Production-safe Deep Link diagnostic logger
-/// Writes to app-private storage on mobile devices:
-///            Android: `<app_support_dir>`/talkmate_deeplink.log (sandboxed, never /sdcard)
-///            iOS: `<app_support_dir>`/talkmate_deeplink.log
-///            Windows: C:\Temp\talkmate_deeplink.log
-///            Linux/macOS: /tmp/talkmate_deeplink.log
+/// Writes exclusively to application-private support storage on all platforms:
+///            `<app_support_dir>`/talkmate_deeplink.log (sandboxed, never /sdcard, C:\Temp, or /tmp)
 ///
 /// Usage:
 /// DeepLinkLogger.log('MESSAGE');
@@ -30,6 +27,7 @@ class DeepLinkLogger {
     'apikey',
     'auth',
     'authorization',
+    'email',
   };
 
   /// Initialize logger (call once at app startup)
@@ -38,6 +36,10 @@ class DeepLinkLogger {
 
     try {
       final logPath = await _getLogPath();
+      if (logPath == null) {
+        _initialized = false;
+        return;
+      }
       final logDir = Directory(p.dirname(logPath));
 
       // Create directory if needed
@@ -54,26 +56,28 @@ class DeepLinkLogger {
     }
   }
 
-  /// Get platform-specific log file path
-  static Future<String> _getLogPath() async {
+  /// Get platform-specific log file path in private app storage across all platforms
+  static Future<String?> _getLogPath() async {
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final dir = await getApplicationSupportDirectory();
-        return p.join(dir.path, 'talkmate_deeplink.log');
-      }
+      final dir = await getApplicationSupportDirectory();
+      return p.join(dir.path, 'talkmate_deeplink.log');
     } catch (_) {
-      // Fallback if path_provider fails in headless/test environments
+      // Fail closed: do not fall back to shared public temp directories like C:\Temp or /tmp
+      return null;
     }
-
-    if (Platform.isWindows) {
-      return r'C:\Temp\talkmate_deeplink.log';
-    } else if (Platform.isMacOS || Platform.isLinux) {
-      return '/tmp/talkmate_deeplink.log';
-    }
-    return '/tmp/talkmate_deeplink.log';
   }
 
-  /// Sanitize query parameters or map arguments to avoid leaking secrets/tokens
+  /// Recursively sanitize any collection or value
+  static dynamic sanitizeValue(dynamic value) {
+    if (value is Map) {
+      return sanitizeMap(value.cast<String, dynamic>());
+    } else if (value is List) {
+      return value.map(sanitizeValue).toList();
+    }
+    return value;
+  }
+
+  /// Sanitize query parameters or map arguments to avoid leaking secrets/tokens recursively
   static Map<String, dynamic> sanitizeMap(Map<String, dynamic>? map) {
     if (map == null) return {};
     final sanitized = <String, dynamic>{};
@@ -85,41 +89,11 @@ class DeepLinkLogger {
       );
       if (isSensitive) {
         sanitized[entry.key] = '[REDACTED]';
-      } else if (entry.value is Map<String, dynamic>) {
-        sanitized[entry.key] =
-            sanitizeMap(entry.value as Map<String, dynamic>);
       } else {
-        sanitized[entry.key] = entry.value;
+        sanitized[entry.key] = sanitizeValue(entry.value);
       }
     }
     return sanitized;
-  }
-
-  /// Build a sanitized representation of a URI with sensitive query parameters and fragments redacted
-  static String sanitizeUri(Uri? uri) {
-    if (uri == null) return 'null';
-    try {
-      final sanitizedQueryParams = uri.queryParameters.map((key, value) {
-        final normalizedKey =
-            key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-        final isSensitive = _sensitiveKeyPatterns.any(
-          (pattern) => normalizedKey.contains(pattern),
-        );
-        return MapEntry(
-          key,
-          isSensitive ? '[REDACTED]' : value,
-        );
-      });
-
-      final sanitized = uri.replace(
-        queryParameters:
-            sanitizedQueryParams.isNotEmpty ? sanitizedQueryParams : null,
-        fragment: uri.hasFragment ? '[REDACTED]' : null,
-      );
-      return sanitized.toString();
-    } catch (_) {
-      return '[REDACTED_URI]';
-    }
   }
 
   /// Log a simple message with timestamp
@@ -140,16 +114,15 @@ class DeepLinkLogger {
     }
   }
 
-  /// Log a URI safely without leaking sensitive tokens or query strings
+  /// Log URI metadata safely without logging any query parameter values, fragments, or raw URIs
   static void logUri(Uri? uri, {String prefix = 'URI'}) {
     if (!_initialized || uri == null) return;
 
     try {
-      log('$prefix = ${sanitizeUri(uri)}');
-      log('  SCHEME = ${uri.scheme}');
-      log('  HOST = ${uri.host}');
-      log('  PATH = ${uri.path}');
-      log('  PATH_SEGMENTS = ${uri.pathSegments.join("/")}');
+      log('$prefix: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}');
+      if (uri.pathSegments.isNotEmpty) {
+        log('  PATH_SEGMENTS = ${uri.pathSegments.join("/")}');
+      }
       if (uri.queryParameters.isNotEmpty) {
         log('  QUERY_KEYS = ${uri.queryParameters.keys.join(", ")}');
       } else {
@@ -161,13 +134,14 @@ class DeepLinkLogger {
     }
   }
 
-  /// Log an exception with context
+  /// Log an exception with sanitized context and runtimeType (never raw message/PII)
   static void logException(String context, Object exception, {StackTrace? stackTrace}) {
     if (!_initialized) return;
 
     try {
-      log('EXCEPTION [$context]: $exception');
+      log('EXCEPTION [$context]: errorType=${exception.runtimeType}');
       if (stackTrace != null) {
+        // Log stack trace frames safely
         log('STACK_TRACE: $stackTrace');
       }
     } catch (e) {

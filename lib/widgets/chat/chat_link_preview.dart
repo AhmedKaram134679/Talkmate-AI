@@ -58,15 +58,16 @@ class _ChatLinkPreviewState extends State<ChatLinkPreview> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (data.imageUrl != null)
+                  if (data.imageBytes != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: Image.network(data.imageUrl!,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const SizedBox.shrink()),
+                      child: Image.memory(
+                        data.imageBytes!,
+                        height: 120,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
                     ),
                   const SizedBox(height: 4),
                   Text(data.title!,

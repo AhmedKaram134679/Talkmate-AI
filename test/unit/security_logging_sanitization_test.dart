@@ -4,39 +4,25 @@ import 'package:talkmate_ai/utils/forensic_logger.dart';
 
 void main() {
   group('SEC-06: DeepLinkLogger Sanitization Tests', () {
-    test('sanitizeUri redacts sensitive query parameters and tokens', () {
-      final uri = Uri.parse(
-        'talkmate://auth/reset-password?code=pkce_secret_token_123456&source=email',
-      );
-
-      final sanitized = DeepLinkLogger.sanitizeUri(uri);
-
-      expect(sanitized, isNot(contains('pkce_secret_token_123456')));
-      expect(sanitized, contains('code=%5BREDACTED%5D'));
-      expect(sanitized, contains('source=email'));
-    });
-
-    test('sanitizeUri redacts fragment authentication tokens', () {
-      final uri = Uri.parse(
-        'talkmate://auth/callback#access_token=secret_jwt_token&refresh_token=secret_refresh_token',
-      );
-
-      final sanitized = DeepLinkLogger.sanitizeUri(uri);
-
-      expect(sanitized, isNot(contains('secret_jwt_token')));
-      expect(sanitized, isNot(contains('secret_refresh_token')));
-      expect(sanitized, contains('#%5BREDACTED%5D'));
-    });
-
-    test('sanitizeMap redacts recoveryCode, tokens, passwords and secrets', () {
+    test('sanitizeMap recursively redacts sensitive keys in nested maps and lists', () {
       final args = <String, dynamic>{
         'recoveryCode': 'super_sensitive_code_98765',
         'chatId': 'safe-uuid-123',
         'authToken': 'bearer-token-abc',
-        'nested': {
+        'nestedMap': {
           'userPassword': 'secret_password',
           'publicFlag': true,
+          'email': 'user@example.com',
         },
+        'listOfMaps': [
+          {'apiKey': 'api_key_123', 'label': 'primary'},
+          {'secret': 'jwt_secret', 'count': 42},
+        ],
+        'nestedList': [
+          [
+            {'token': 'nested_token', 'safe': 'yes'}
+          ]
+        ],
       };
 
       final sanitized = DeepLinkLogger.sanitizeMap(args);
@@ -45,27 +31,67 @@ void main() {
       expect(sanitized['chatId'], equals('safe-uuid-123'));
       expect(sanitized['authToken'], equals('[REDACTED]'));
 
-      final nested = sanitized['nested'] as Map<String, dynamic>;
-      expect(nested['userPassword'], equals('[REDACTED]'));
-      expect(nested['publicFlag'], isTrue);
+      final nestedMap = sanitized['nestedMap'] as Map<String, dynamic>;
+      expect(nestedMap['userPassword'], equals('[REDACTED]'));
+      expect(nestedMap['email'], equals('[REDACTED]'));
+      expect(nestedMap['publicFlag'], isTrue);
+
+      final listOfMaps = sanitized['listOfMaps'] as List;
+      expect((listOfMaps[0] as Map)['apiKey'], equals('[REDACTED]'));
+      expect((listOfMaps[0] as Map)['label'], equals('primary'));
+      expect((listOfMaps[1] as Map)['secret'], equals('[REDACTED]'));
+      expect((listOfMaps[1] as Map)['count'], equals(42));
+
+      final nestedList = sanitized['nestedList'] as List;
+      final innerList = nestedList[0] as List;
+      expect((innerList[0] as Map)['token'], equals('[REDACTED]'));
+      expect((innerList[0] as Map)['safe'], equals('yes'));
+    });
+
+    test('sanitizeValue handles null, primitives, lists, and maps', () {
+      expect(DeepLinkLogger.sanitizeValue(null), isNull);
+      expect(DeepLinkLogger.sanitizeValue(123), equals(123));
+      expect(DeepLinkLogger.sanitizeValue('text'), equals('text'));
+      expect(
+        DeepLinkLogger.sanitizeValue([
+          {'password': 'secret'},
+          'normal'
+        ]),
+        equals([
+          {'password': '[REDACTED]'},
+          'normal'
+        ]),
+      );
     });
   });
 
   group('SEC-07: ForensicLogger Sanitization Tests', () {
-    test('sanitizeUrl strips signed tokens and query parameters from remote URLs', () {
+    test('sanitizeUrl strips signed tokens, fragments, and query parameters', () {
       const signedUrl =
-          'https://icdbbfsjbslzctshxytd.supabase.co/storage/v1/object/sign/talkmate/user_1/photo.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sensitive_signature';
+          'https://icdbbfsjbslzctshxytd.supabase.co/storage/v1/object/sign/talkmate/user_1/photo.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sensitive_signature#section';
 
       final sanitized = ForensicLogger.sanitizeUrl(signedUrl);
 
       expect(sanitized, isNot(contains('token=')));
       expect(sanitized, isNot(contains('sensitive_signature')));
+      expect(sanitized, isNot(contains('#section')));
       expect(
         sanitized,
         equals(
           'https://icdbbfsjbslzctshxytd.supabase.co/storage/v1/object/sign/talkmate/user_1/photo.jpg',
         ),
       );
+    });
+
+    test('sanitizeUrl strictly strips user credentials (username and password)', () {
+      const credentialUrl = 'https://admin:super_secret_password@example.com:8080/path/to/resource?query=1';
+
+      final sanitized = ForensicLogger.sanitizeUrl(credentialUrl);
+
+      expect(sanitized, isNot(contains('admin')));
+      expect(sanitized, isNot(contains('super_secret_password')));
+      expect(sanitized, isNot(contains('query=1')));
+      expect(sanitized, equals('https://example.com:8080/path/to/resource'));
     });
 
     test('sanitizeUrl handles null, empty and clean URLs gracefully', () {

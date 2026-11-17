@@ -68,5 +68,12 @@ void main() {
       final result4 = await LinkPreviewService.instance.fetch('http://admin:pass@example.com');
       expect(result4, isNull);
     });
+
+    test('Open Graph image targeting private/local network is rejected during pre-flight validation', () async {
+      expect(await LinkPreviewService.isSafeTarget(Uri.parse('http://192.168.1.1/image.png')), isFalse);
+      expect(await LinkPreviewService.isSafeTarget(Uri.parse('http://10.0.0.1/avatar.jpg')), isFalse);
+      expect(await LinkPreviewService.isSafeTarget(Uri.parse('http://169.254.169.254/secret.png')), isFalse);
+      expect(await LinkPreviewService.isSafeTarget(Uri.parse('http://localhost:9000/logo.png')), isFalse);
+    });
   });
 }
