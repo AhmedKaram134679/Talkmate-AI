@@ -3,6 +3,87 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { initializeApp, getApps, cert, type ServiceAccount } from "npm:firebase-admin@12.7.0/app";
 import { getMessaging } from "npm:firebase-admin@12.7.0/messaging";
 import webpush from "npm:web-push@3.6.7";
+
+// ============================================================================
+// CENTRALIZED STRUCTURED LOGGER (SEC-09)
+// Provides strictly allowlisted, sanitized telemetry without leaking tokens,
+// full identifiers, credentials, email addresses, or raw error stacks.
+// ============================================================================
+export class StructuredLogger {
+  private static sanitizeId(id?: string | null): string {
+    if (!id || typeof id !== "string") return "[ANONYMOUS]";
+    if (id.length <= 8) return "[REDACTED_ID]";
+    return id.substring(0, 8) + "...";
+  }
+
+  private static sanitizeError(err: unknown): { code?: string; message: string; type?: string } {
+    if (!err) return { message: "Unknown error" };
+    if (typeof err === "object") {
+      const e = err as any;
+      const rawMsg = e.message ? String(e.message) : "Internal error";
+      // Redact potential emails, tokens, or JWTs from error messages
+      const cleanMsg = rawMsg
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]")
+        .replace(/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g, "[REDACTED_JWT]")
+        .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED_TOKEN]")
+        .replace(/[\r\n\t]+/g, " ")
+        .substring(0, 200);
+
+      return {
+        code: e.code ? String(e.code) : undefined,
+        message: cleanMsg,
+        type: e.name || e.constructor?.name || undefined,
+      };
+    }
+    return {
+      message: String(err)
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]")
+        .replace(/[\r\n\t]+/g, " ")
+        .substring(0, 200),
+    };
+  }
+
+  static info(event: string, meta?: Record<string, unknown>) {
+    console.log(JSON.stringify({
+      level: "INFO",
+      event,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  }
+
+  static warn(event: string, meta?: Record<string, unknown>) {
+    console.warn(JSON.stringify({
+      level: "WARN",
+      event,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  }
+
+  static error(event: string, err?: unknown, meta?: Record<string, unknown>) {
+    console.error(JSON.stringify({
+      level: "ERROR",
+      event,
+      error: this.sanitizeError(err),
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  }
+
+  static security(event: string, meta?: Record<string, unknown>) {
+    console.warn(JSON.stringify({
+      level: "SECURITY",
+      event,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  }
+
+  static safeId(id?: string | null): string {
+    return this.sanitizeId(id);
+  }
+}
 const firebaseServiceAccountBase64 = Deno.env.get(
   "FIREBASE_SERVICE_ACCOUNT_B64",
 );
@@ -49,11 +130,7 @@ try {
     throw new Error("Missing Firebase client email.");
   }
 } catch (error) {
-  console.error(
-    "Firebase service account configuration is invalid:",
-    error instanceof Error ? error.message : "Unknown configuration error",
-  );
-
+  StructuredLogger.error("FIREBASE_INIT_INVALID", error);
   throw new Error("Firebase service account initialization failed.");
 }
 
@@ -123,7 +200,7 @@ function getHash(str: string): number {
 async function _checkFatigue(supabase: SupabaseClient, userId: string, _limit: number): Promise<boolean> {
   const { data, error } = await supabase.rpc('fn_is_user_fatigued', { p_user_id: userId });
   if (error) {
-    console.error("⚠️ Fatigue check failed:", error);
+    StructuredLogger.error("FATIGUE_CHECK_FAILED", error, { user: StructuredLogger.safeId(userId) });
     return false;
   }
   return data === true;
@@ -142,7 +219,7 @@ function _checkFeatureRollout(flag: AIFeatureFlag, userId: string): boolean {
 
 async function _syncToInbox(entry: NotificationInboxEntry) {
     const { error } = await supabaseAdmin.from('notification_inbox').insert(entry);
-    if (error) console.error("⚠️ Failed to sync to inbox:", error);
+    if (error) StructuredLogger.error("SYNC_INBOX_FAILED", error);
 }
 
 function _resolveFallback(
@@ -164,15 +241,15 @@ function _resolveFallback(
         _resolveFallbackInternal(p),
         timeout
     ]).catch(err => {
-        console.error("⚠️ Fallback skipped or failed:", err);
+        StructuredLogger.error("FALLBACK_EXECUTION_FAILED", err);
         // STAGE I: RECORD TO DLQ
         supabaseAdmin.rpc('record_dlq_entry', {
             p_user_id: p.userId,
             p_payload: p,
             p_error_reason: String(err)
         }).then(({ error }) => {
-             if (error) console.error("🚨 DLQ WRITE FAILED:", error);
-             else console.log("💾 Saved to DLQ");
+             if (error) StructuredLogger.error("DLQ_WRITE_FAILED", error);
+             else StructuredLogger.info("DLQ_RECORDED");
         });
     });
 }
@@ -217,7 +294,7 @@ async function _resolveFallbackInternal(
     }
 
     if (fallbackChannel === 'email') {
-        console.log(`📧 Fallback Resolving: Sending Email to ${p.userId} for ${p.scenario}`);
+        StructuredLogger.info("FALLBACK_RESOLVING_EMAIL", { user: StructuredLogger.safeId(p.userId), scenario: p.scenario });
     }
 
     // Update Logs
@@ -238,7 +315,7 @@ async function _syncToOutcomes(entry: NotificationOutcomeEntry) {
         value_score: entry.value_score,
         metadata: entry.metadata
     }, { onConflict: 'message_id, user_id' });
-    if (error) console.error("⚠️ Failed to sync to outcomes:", error);
+    if (error) StructuredLogger.error("SYNC_OUTCOMES_FAILED", error);
 }
 
 async function _syncToBundle(p: { userId: string, messageId: string, scenario: string, reason: string }) {
@@ -249,7 +326,7 @@ async function _syncToBundle(p: { userId: string, messageId: string, scenario: s
         p_scenario: p.scenario,
         p_reason: p.reason
     });
-    if (error) console.error("⚠️ Failed to sync to bundle:", error);
+    if (error) StructuredLogger.error("SYNC_BUNDLE_FAILED", error);
 }
 
 
@@ -695,7 +772,7 @@ serve(async (req) => {
   // STRICT CALLER AUTHENTICATION & AUTHORIZATION
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.warn("⛔ Unauthorized push-handler request: Missing or invalid Authorization header");
+    StructuredLogger.security("Unauthorized push-handler request: Missing or invalid Authorization header");
     return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
       status: 401,
       headers: { "Content-Type": "application/json" }
@@ -712,7 +789,7 @@ serve(async (req) => {
     // Verify user JWT with Supabase Auth
     const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !userData?.user) {
-      console.warn("⛔ Unauthorized push-handler request: Invalid JWT");
+      StructuredLogger.security("Unauthorized push-handler request: Invalid JWT");
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
@@ -724,7 +801,7 @@ serve(async (req) => {
 
   try {
     let payload = await req.json();
-    console.log("Push request received", {
+    StructuredLogger.info("Push request received", {
       type: payload?.type,
       message_id: payload?.message_id || payload?.record?.id || payload?.record?.message_id,
       chat_id: payload?.chat_id || payload?.record?.chat_id,
@@ -741,7 +818,7 @@ serve(async (req) => {
         // Reaction specific mappings
         sender_id: payload.record.user_id || payload.record.sender_id,
       };
-      console.log("Push payload unwrapped", {
+      StructuredLogger.info("Push payload unwrapped", {
         type: payload.type,
         message_id: payload.message_id,
         chat_id: payload.chat_id,
@@ -756,7 +833,7 @@ serve(async (req) => {
       if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
         const callId = payload.call_id || message_id;
         if (!callId) {
-          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered call push without call_id`);
+          StructuredLogger.security(`Forbidden: Authenticated caller ${StructuredLogger.safeId(callerUserId)} triggered call push without call_id`);
           return new Response(JSON.stringify({ error: "Forbidden: Missing call record identifier" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -771,7 +848,7 @@ serve(async (req) => {
           .single();
 
         if (callError || !callRecord) {
-          console.warn(`⛔ Forbidden: Call record not found for id ${callId}`);
+          StructuredLogger.security(`Forbidden: Call record not found for id ${callId}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced call record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -783,7 +860,7 @@ serve(async (req) => {
 
         // Caller must be the sender who initiated the call
         if (callerUserId !== dbSenderId) {
-          console.warn(`⛔ Forbidden: Caller ${callerUserId} is not the sender (${dbSenderId}) of call ${callId}`);
+          StructuredLogger.security(`Forbidden: Caller ${StructuredLogger.safeId(callerUserId)} is not the sender (${StructuredLogger.safeId(dbSenderId)}) of call ${callId}`);
           return new Response(JSON.stringify({ error: "Forbidden: Caller does not match call sender" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -792,7 +869,7 @@ serve(async (req) => {
 
         // 1. Call Lifecycle Authorization: Only 'ringing' calls permit incoming call notifications
         if (callRecord.status !== 'ringing') {
-          console.warn(`⛔ Forbidden: Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
+          StructuredLogger.security(`Forbidden: Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
           return new Response(JSON.stringify({ error: `Forbidden: Call is not in ringing state (status: ${callRecord.status})` }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -810,7 +887,7 @@ serve(async (req) => {
       } else if (payloadType === 'room_created') {
         const roomId = payload.room_id || payload.id;
         if (!roomId) {
-          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered room push without room id`);
+          StructuredLogger.security(`Forbidden: Authenticated caller ${StructuredLogger.safeId(callerUserId)} triggered room push without room id`);
           return new Response(JSON.stringify({ error: "Forbidden: Missing room identifier" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -825,7 +902,7 @@ serve(async (req) => {
           .single();
 
         if (roomError || !roomRecord) {
-          console.warn(`⛔ Forbidden: Room record not found for id ${roomId}`);
+          StructuredLogger.security(`Forbidden: Room record not found for id ${roomId}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced room record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -833,7 +910,7 @@ serve(async (req) => {
         }
 
         if (callerUserId !== roomRecord.created_by) {
-          console.warn(`⛔ Forbidden: Caller ${callerUserId} does not match trusted room creator ${roomRecord.created_by}`);
+          StructuredLogger.security(`Forbidden: Caller ${StructuredLogger.safeId(callerUserId)} does not match trusted room creator ${StructuredLogger.safeId(roomRecord.created_by)}`);
           return new Response(JSON.stringify({ error: "Forbidden: Caller does not match room creator" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -852,7 +929,7 @@ serve(async (req) => {
       } else {
         // Message payload
         if (!message_id) {
-          console.warn(`⛔ Forbidden: Authenticated caller ${callerUserId} triggered message push without message_id`);
+          StructuredLogger.security(`Forbidden: Authenticated caller ${StructuredLogger.safeId(callerUserId)} triggered message push without message_id`);
           return new Response(JSON.stringify({ error: "Forbidden: Missing message record identifier" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -867,7 +944,7 @@ serve(async (req) => {
           .single();
 
         if (msgError || !messageRecord) {
-          console.warn(`⛔ Forbidden: Message record not found for id ${message_id}`);
+          StructuredLogger.security(`Forbidden: Message record not found for id ${message_id}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced message record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -875,7 +952,7 @@ serve(async (req) => {
         }
 
         if (callerUserId !== messageRecord.sender_id) {
-          console.warn(`⛔ Forbidden: Caller ${callerUserId} is not the sender (${messageRecord.sender_id}) of message ${message_id}`);
+          StructuredLogger.security(`Forbidden: Caller ${StructuredLogger.safeId(callerUserId)} is not the sender (${StructuredLogger.safeId(messageRecord.sender_id)}) of message ${message_id}`);
           return new Response(JSON.stringify({ error: "Forbidden: Caller does not match message sender" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -892,7 +969,7 @@ serve(async (req) => {
 
     // STAGE R: SPECIALIZED CALL HANDLING (Signaling Constitution)
     if (payloadType === 'call_ringing' || payloadType === 'INCOMING_CALL' || payload.receiver_id) {
-      console.log("📞 AI Routing: Processing Call Ringing push...");
+      StructuredLogger.info("AI Routing: Processing Call Ringing push");
       const callId = payload.call_id || message_id;
       if (!callId) return new Response(JSON.stringify({ error: "Missing call identifier" }), { status: 400 });
 
@@ -904,13 +981,13 @@ serve(async (req) => {
         .single();
 
       if (callError || !callRecord) {
-        console.warn(`⛔ Call record not found for id ${callId}:`, callError);
+        StructuredLogger.warn(`Call record not found for id ${callId}`, { error: callError ? String(callError.message || callError) : null });
         return new Response(JSON.stringify({ error: "Referenced call record not found" }), { status: 404 });
       }
 
       // 1. Call Lifecycle: only 'ringing' calls may trigger push notifications
       if (callRecord.status !== 'ringing') {
-        console.warn(`⛔ Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
+        StructuredLogger.warn(`Call ${callId} has ineligible status '${callRecord.status}' for call notification`);
         return new Response(JSON.stringify({ error: `Call is not in ringing state (status: ${callRecord.status})` }), { status: 403 });
       }
 
@@ -970,7 +1047,7 @@ serve(async (req) => {
 
     // STAGE R: ROOM CREATION HANDLING
     if (payloadType === 'room_created') {
-      console.log("🏢 AI Routing: Processing Room Creation push...");
+      StructuredLogger.info("AI Routing: Processing Room Creation push");
       const targetRoomId = payload.room_id || payload.id;
       if (!targetRoomId) return new Response(JSON.stringify({ error: "Missing room metadata: id" }), { status: 400 });
 
@@ -982,7 +1059,7 @@ serve(async (req) => {
         .single();
 
       if (roomError || !roomRecord) {
-        console.warn(`⛔ Room record not found for id ${targetRoomId}:`, roomError);
+        StructuredLogger.warn(`Room record not found for id ${targetRoomId}`, { error: roomError ? String(roomError.message || roomError) : null });
         return new Response(JSON.stringify({ error: "Room record not found" }), { status: 404 });
       }
 
@@ -1004,12 +1081,12 @@ serve(async (req) => {
       if (isPrivate) {
         // For private rooms: ONLY users explicitly listed in allowed_users, strictly excluding creator
         recipientIds = allowedUsers.filter((uid: string) => uid && uid !== creatorId);
-        console.log(`🔒 Private room ${canonicalRoomId}: ${recipientIds.length} authorized recipients from allowed_users`);
+        StructuredLogger.info(`Private room ${canonicalRoomId}: ${recipientIds.length} authorized recipients from allowed_users`);
       } else {
         // For public rooms: Follow existing product rules (active users excluding creator)
         const { data: activeUsers } = await supabaseAdmin.from("profiles").select("id").neq("id", creatorId).limit(50);
         recipientIds = activeUsers?.map(u => u.id) || [];
-        console.log(`🌐 Public room ${canonicalRoomId}: ${recipientIds.length} recipients`);
+        StructuredLogger.info(`Public room ${canonicalRoomId}: ${recipientIds.length} recipients`);
       }
 
       if (recipientIds.length === 0) return new Response(JSON.stringify({ message: "No recipients for room" }));
@@ -1074,7 +1151,7 @@ serve(async (req) => {
     const participants = participantsResult.data;
 
     if (!participants || participants.length === 0) {
-      console.log("⚠️ No recipients found for chat:", chat_id);
+      StructuredLogger.info("No recipients found for chat", { chat_id: effectiveChatId });
       return new Response(JSON.stringify({ message: "No recipients found" }));
     }
 
@@ -1086,7 +1163,7 @@ serve(async (req) => {
         muteSettingsMap[p.user_id] = { is_muted: p.is_muted, mute_until: p.mute_until };
     });
 
-    console.log(`👥 Found ${recipientIds.length} recipients:`, recipientIds);
+    StructuredLogger.info(`Found ${recipientIds.length} recipients`);
 
     // 3. Fetch Devices with DND and Context Info
     const { data: userDevicesRaw } = await supabaseAdmin
@@ -1098,12 +1175,11 @@ serve(async (req) => {
     const userDevices = (userDevicesRaw as UserDevice[] | null) || [];
 
     if (userDevices.length === 0) {
-      console.log(`⚠️ No active devices found for recipients: ${recipientIds.join(', ')}`);
+      StructuredLogger.info(`No active devices found for recipients (count: ${recipientIds.length})`);
       return new Response(JSON.stringify({ message: "No active devices" }));
     }
 
-    console.log(`📱 Found ${userDevices.length} active devices for recipients.`);
-    userDevices.forEach(d => console.log(`   - Device: ${d.device_id}, User: ${d.user_id}, Online: ${d.is_online}, State: ${d.app_state}`));
+    StructuredLogger.info(`Found ${userDevices.length} active devices for recipients.`);
 
     // 3.5 Fetch Context Data (Flags, Segments, Policies, Experiments, Stats, Limits)
     const contextResults = await Promise.all([
@@ -1310,7 +1386,7 @@ serve(async (req) => {
 
     // Global Kill Switch
     if (flagMap['global_push_enabled'] === false) {
-      console.log("⛔ Global Push Disabled via Feature Flag.");
+      StructuredLogger.info("Global Push Disabled via Feature Flag");
       return new Response(JSON.stringify({ message: "Global Push Disabled" }));
     }
 
@@ -1490,7 +1566,7 @@ serve(async (req) => {
           // INJECTED BY ANTIGRAVITY FOR VERIFICATION
           if (checkFeatureFlag('ai_verification_mode', device.user_id)) {
               // Bypass Stage Q and proceed to AI
-              console.log(`Verification Mode Active for ${device.user_id} - Bypassing Blast Radius`);
+              StructuredLogger.info(`Verification Mode Active for ${StructuredLogger.safeId(device.user_id)} - Bypassing Blast Radius`);
           } else {
              // Fallback to ensuring we don't accidentally block if logic is missing locally
              // But if server had logic, this overwrite should fix it.
@@ -1961,7 +2037,7 @@ serve(async (req) => {
                                    bucket_id: new Date().toISOString().slice(0, 8) + 'W' + Math.ceil(new Date().getDate() / 7),
                                    delta_value: bucketedDelta,
                                    noise_factor: noise
-                               }).then(({ error }) => { if(error) console.error("Federated Upload Error", error); });
+                               }).then(({ error }) => { if(error) StructuredLogger.error("Federated Upload Error", { error: String(error.message || error) }); });
                            }
                        }
                    }
@@ -2104,7 +2180,7 @@ serve(async (req) => {
                         latency_ms: 800,
                         details: { error: errMessage, time_segment: timeSegment }
                     }).then(({ error }) => {
-                        if (error) console.error("⚠️ Failed to log AI failure:", error);
+                        if (error) StructuredLogger.error("Failed to log AI failure", { error: String(error.message || error) });
                     });
                 }
 
@@ -2193,7 +2269,7 @@ serve(async (req) => {
       // Guard Foreground
       const isForeground = device.is_online && device.app_state === 'resumed';
       if (isForeground) {
-        console.log(`🛡️ Foreground Guard: Skipping device ${device.device_id} for user ${device.user_id} (App is resumed)`);
+        StructuredLogger.info(`Foreground Guard: Skipping device for user ${StructuredLogger.safeId(device.user_id)} (App is resumed)`);
         logs.push({
           message_id, chat_id, device_id: device.device_id, recipient_id: device.user_id,
           decision: 'skipped', priority: null, reason: 'FOREGROUND_ACTIVE', meta
@@ -2404,7 +2480,7 @@ serve(async (req) => {
       }
 
       // --- STEP 7: EXECUTION ---
-      console.log(`🎯 Device ${device.device_id} Final Decision: ${decision} (${reason})`);
+      StructuredLogger.info(`Device decision: ${decision} (${reason})`);
       if (decision === 'sent') {
           targets.push({ 
             token: device.fcm_token, priority: priority as 'high' | 'normal', device_id: device.device_id,
@@ -2425,7 +2501,7 @@ serve(async (req) => {
 
       } catch (criticalLoopError: unknown) {
           // STAGE Q: BLAST RADIUS CONTAINMENT (Fallback)
-          console.error(`🚨 CRITICAL LOOP ERROR for user ${device.user_id}:`, criticalLoopError);
+          StructuredLogger.error(`CRITICAL LOOP ERROR for user ${StructuredLogger.safeId(device.user_id)}`, { error: String(criticalLoopError) });
           const errMap = { error: String(criticalLoopError) } as unknown as RoutingMeta;
           targets.push({ 
               token: device.fcm_token, priority: 'high', device_id: device.device_id,
@@ -2477,16 +2553,16 @@ serve(async (req) => {
     // Async Logging & Counter Increments
     if (logs.length > 0) {
         supabaseAdmin.from('routing_logs').insert(logs).then(({ error }) => {
-            if (error) console.error("⚠️ Failed to write routing logs:", error);
-            else console.log(`📝 Logged ${logs.length} routing decisions.`);
+            if (error) StructuredLogger.error("Failed to write routing logs", { error: String(error.message || error) });
+            else StructuredLogger.info(`Logged ${logs.length} routing decisions.`);
         });
 
         // AI Decisions (Telemetry v3)
         if (aiLogs.length > 0) {
             supabaseAdmin.from('ai_decision_logs').insert(aiLogs).select('id, user_id').then(({ data, error }) => {
-                if (error) console.error("⚠️ Failed to write AI decision logs:", error);
+                if (error) StructuredLogger.error("Failed to write AI decision logs", { error: String(error.message || error) });
                 else {
-                    console.log(`🧠 Logged ${aiLogs.length} AI decisions.`);
+                    StructuredLogger.info(`Logged ${aiLogs.length} AI decisions.`);
                     // Link shadow logs to decision IDs
                     if (shadowLogs.length > 0 && data) {
                         const finalShadowLogs = shadowLogs.map(sl => {
@@ -2494,7 +2570,7 @@ serve(async (req) => {
                             return { ...sl, decision_id: decisionEntry?.id };
                         });
                         supabaseAdmin.from('ai_shadow_logs').insert(finalShadowLogs).then(({ error: shadowErr }) => {
-                            if (shadowErr) console.error("⚠️ Failed to write shadow logs:", shadowErr);
+                            if (shadowErr) StructuredLogger.error("Failed to write shadow logs", { error: String(shadowErr.message || shadowErr) });
                         });
                     }
                 }
@@ -2508,7 +2584,7 @@ serve(async (req) => {
                     p_user_id: uid, 
                     p_scenario: content_type || 'chat' 
                 }).then(({ error }) => {
-                    if (error) console.error("⚠️ Failed to increment rate limit:", error);
+                    if (error) StructuredLogger.error("Failed to increment rate limit", { error: String(error.message || error) });
                 });
             });
         }
@@ -2542,13 +2618,13 @@ serve(async (req) => {
 
         if (confidenceLogs.length > 0) {
             supabaseAdmin.from('ai_confidence_metrics').insert(confidenceLogs).then(({ error }) => {
-                if (error) console.error("⚠️ Failed to write confidence metrics:", error);
+                if (error) StructuredLogger.error("Failed to write confidence metrics", { error: String(error.message || error) });
             });
         }
 
         if (shadowLogs.length > 0) {
             supabaseAdmin.from('ai_shadow_logs').insert(shadowLogs).then(({ error }) => {
-                if (error) console.error("⚠️ Failed to write shadow logs:", error);
+                if (error) StructuredLogger.error("Failed to write shadow logs", { error: String(error.message || error) });
             });
         }
 
@@ -2609,7 +2685,7 @@ serve(async (req) => {
     const isCircuitOpen = breakerState?.state === 'OPEN';
 
     if (isCircuitOpen) {
-        console.warn("🛡️ Circuit Breaker OPEN for FCM. Skipping external call.");
+        StructuredLogger.warn("Circuit Breaker OPEN for FCM. Skipping external call.");
         // Directly fallback for all targets
         const fallbackPromises = targets.map(t => _resolveFallback({
             userId: t.recipient_id,
@@ -2689,21 +2765,21 @@ serve(async (req) => {
                     const state = res.success ? 'delivered' : 'failed';
                     
                     if (res.success) {
-                        console.log(`✅ FCM Success for user ${target.recipient_id}`);
+                        StructuredLogger.info(`FCM Success for user ${StructuredLogger.safeId(target.recipient_id)}`);
                     }
                     
                     // [AUTO-HEAL]: If FCM says the token is invalid or not registered, deactivate the device
                     if (!res.success && res.error) {
                         const errorCode = res.error.code;
                         if (errorCode === 'messaging/invalid-argument' || errorCode === 'messaging/registration-token-not-registered') {
-                            console.warn(`🧹 Auto-Heal: Deactivating invalid device token for user ${target.recipient_id}`);
+                            StructuredLogger.warn(`Auto-Heal: Deactivating invalid device token for user ${StructuredLogger.safeId(target.recipient_id)}`);
                             supabaseAdmin
                                 .from('user_devices')
                                 .update({ is_active: false, updated_at: new Date().toISOString() })
                                 .eq('device_id', target.device_id)
                                 .eq('user_id', target.recipient_id)
                                 .then(({ error }) => {
-                                    if (error) console.error("⚠️ Failed to auto-deactivate device:", error);
+                                    if (error) StructuredLogger.error("Failed to auto-deactivate device", { error: String(error.message || error) });
                                 });
                         }
                     }
@@ -2718,11 +2794,10 @@ serve(async (req) => {
                     });
 
                     if (!res.success) {
-                        console.error(JSON.stringify({
-                            event: "FCM_DELIVERY_FAILURE",
-                            recipient_id: target.recipient_id,
+                        StructuredLogger.error("FCM_DELIVERY_FAILURE", {
+                            recipient_id: StructuredLogger.safeId(target.recipient_id),
                             errorCode: res.error?.code || "unknown",
-                        }));
+                        });
                         _resolveFallback({
                             userId: target.recipient_id,
                             scenario: content_type || 'chat',
@@ -2765,11 +2840,10 @@ serve(async (req) => {
                     });
                 // deno-lint-ignore no-explicit-any
                 } catch (wpError: any) {
-                    console.error(JSON.stringify({
-                        event: "WEB_PUSH_DELIVERY_FAILURE",
-                        recipient_id: target.recipient_id,
+                    StructuredLogger.error("WEB_PUSH_DELIVERY_FAILURE", {
+                        recipient_id: StructuredLogger.safeId(target.recipient_id),
                         statusCode: wpError?.statusCode || 500,
-                    }));
+                    });
                     failureCount++;
 
                     supabaseAdmin.from('routing_logs').update({
@@ -2796,10 +2870,9 @@ serve(async (req) => {
             return { success: successCount, failure: failureCount };
 
         } catch (systemError) {
-             console.error(JSON.stringify({
-                 event: "PUSH_SYSTEM_ERROR",
+             StructuredLogger.error("PUSH_SYSTEM_ERROR", {
                  errorCategory: systemError instanceof Error ? systemError.name : typeof systemError,
-             }));
+             });
              await supabaseAdmin.rpc('trip_circuit_breaker', { p_service_name: 'fcm', p_force_open: false });
 
              batchTargets.forEach(t => {
@@ -2831,10 +2904,9 @@ serve(async (req) => {
 
   } catch (err: unknown) {
     const error = err as Error;
-    console.error(JSON.stringify({
-      event: "AI_ROUTING_ERROR",
+    StructuredLogger.error("AI_ROUTING_ERROR", {
       errorCategory: error.name || "Error",
-    }));
+    });
     return new Response(JSON.stringify({ error: "Internal processing error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" }

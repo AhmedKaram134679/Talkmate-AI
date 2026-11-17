@@ -1,12 +1,18 @@
 // TalkMate AI - Privileged RPC HTTPS PostgREST Integration Test Suite (SEC-03 / SEC-07)
 // Verifies real HTTPS requests to PostgREST with STRICT TLS certificate validation.
-// Run with: deno test --no-config --allow-net supabase/functions/push-handler/test_postgrest_privileged_rpcs.ts
+// Run with: deno test --no-config --allow-net --allow-env supabase/functions/push-handler/test_postgrest_privileged_rpcs.ts
 
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-const SUPABASE_URL = "https://icdbbfsjbslzctshxytd.supabase.co";
-const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljZGJiZnNqYnNsemN0c2h4eXRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0Mjg2NjgsImV4cCI6MjA5NjAwNDY2OH0.RXHSRZeTalHY3shnFuoHrkaS2gYT4XqgJzgfmkUschw";
-const SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljZGJiZnNqYnNsemN0c2h4eXRkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDQyODY2OCwiZXhwIjoyMDk2MDA0NjY4fQ.VmBetxbbIBDF9gxnAKC_cikCXLD66jXao-YR9I_Tm0Y";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://icdbbfsjbslzctshxytd.supabase.co";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+if (!ANON_KEY || !SERVICE_ROLE_KEY) {
+  throw new Error(
+    "Security requirement violation: SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY must be provided via environment variables. Hardcoded credentials have been removed."
+  );
+}
 
 Deno.test("SEC-03 / SEC-07: Unauthenticated request to purge_old_data is denied (401)", async () => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/purge_old_data`, {

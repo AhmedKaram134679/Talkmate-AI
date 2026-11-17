@@ -49,8 +49,9 @@ class LinkPreviewService {
   static const Duration _connectTimeout = Duration(seconds: 4);
   static const Duration _totalTimeout = Duration(seconds: 8);
 
-  /// Operational feature flag: allows fail-closed behavior if external network fetching is disabled
-  static bool enableExternalFetching = true;
+  /// Operational feature flag: allows fail-closed behavior if external network fetching is disabled.
+  /// Default is FALSE (fail-closed, requires explicit opt-in).
+  static bool enableExternalFetching = false;
 
   /// Check whether an IP address belongs to loopback, private, link-local, multicast, or reserved ranges
   static bool isPrivateOrLocalAddress(InternetAddress address) {
@@ -205,26 +206,30 @@ class LinkPreviewService {
 
     client.connectionFactory =
         (Uri uri, String? proxyHost, int? proxyPort) async {
-      final host = uri.host.trim().toLowerCase();
-      final port = uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
+      final targetHost = (proxyHost != null && proxyHost.isNotEmpty)
+          ? proxyHost.trim().toLowerCase()
+          : uri.host.trim().toLowerCase();
+      final targetPort = (proxyHost != null && proxyPort != null)
+          ? proxyPort
+          : (uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80));
 
       // 1. Connection-time destination IP validation and pinning
       InternetAddress? pinnedIp;
-      final directIp = InternetAddress.tryParse(host);
+      final directIp = InternetAddress.tryParse(targetHost);
       if (directIp != null) {
         if (isPrivateOrLocalAddress(directIp)) {
           throw SocketException('Access to private/local address is forbidden: $directIp',
-              address: directIp, port: port);
+              address: directIp, port: targetPort);
         }
         pinnedIp = directIp;
       } else {
-        final addresses = await InternetAddress.lookup(host).timeout(
+        final addresses = await InternetAddress.lookup(targetHost).timeout(
           timeout,
           onTimeout: () => [],
         );
 
         if (addresses.isEmpty) {
-          throw SocketException('DNS resolution failed or timed out for $host', port: port);
+          throw SocketException('DNS resolution failed or timed out for $targetHost', port: targetPort);
         }
 
         // Validate all resolved addresses; reject if any forbidden destination is present
@@ -233,7 +238,7 @@ class LinkPreviewService {
             throw SocketException(
                 'DNS resolved to forbidden destination: ${addr.address}',
                 address: addr,
-                port: port);
+                port: targetPort);
           }
         }
 
@@ -244,7 +249,7 @@ class LinkPreviewService {
       // 2. Establish raw TCP connection directly to the pinned IP address
       // Dart HttpClient will wrap this socket in SecureSocket.secure(..., host: uri.host)
       // for HTTPS connections, preserving SNI and full certificate validation.
-      return Socket.startConnect(pinnedIp, port);
+      return Socket.startConnect(pinnedIp, targetPort);
     };
 
     return client;
@@ -360,6 +365,21 @@ class LinkPreviewService {
       Uri currentUri = initialUri;
       int redirects = 0;
 
+      Future<void> safeDrain(HttpClientResponse res) async {
+        final rem = _totalTimeout - stopwatch.elapsed;
+        if (rem <= Duration.zero) {
+          client?.close(force: true);
+          return;
+        }
+        try {
+          await res.drain().timeout(rem, onTimeout: () {
+            client?.close(force: true);
+          });
+        } catch (_) {
+          client?.close(force: true);
+        }
+      }
+
       while (redirects <= _maxRedirects) {
         final remaining = _totalTimeout - stopwatch.elapsed;
         if (remaining <= Duration.zero) return null;
@@ -378,18 +398,18 @@ class LinkPreviewService {
             (response.statusCode >= 300 && response.statusCode < 400)) {
           redirects++;
           if (redirects > _maxRedirects) {
-            await response.drain();
+            await safeDrain(response);
             return null;
           }
 
           final location = response.headers.value(HttpHeaders.locationHeader);
           if (location == null || location.isEmpty) {
-            await response.drain();
+            await safeDrain(response);
             return null;
           }
 
           final redirectUri = currentUri.resolve(location);
-          await response.drain();
+          await safeDrain(response);
 
           // CRITICAL: Re-validate redirect target to prevent SSRF via open redirect
           if (!await isSafeTarget(redirectUri)) {
@@ -401,31 +421,44 @@ class LinkPreviewService {
         }
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
         // Strict Content-Type validation: Missing or non-HTML types are rejected
         final contentType = response.headers.contentType;
         if (contentType == null) {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
         final mime = contentType.mimeType.toLowerCase().trim();
         if (mime != 'text/html' && mime != 'application/xhtml+xml') {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
-        // Read stream with real cancellation and hard size limit
+        // Read stream with real cancellation, hard size limit, and absolute deadline timer
         final builder = BytesBuilder(copy: false);
         final completer = Completer<bool>();
+
+        final streamTimeout = _totalTimeout - stopwatch.elapsed;
+        if (streamTimeout <= Duration.zero) return null;
+
+        // REAL DEADLINE TIMER: Guarantees termination even if stream stalls without emitting chunks
+        final deadlineTimer = Timer(streamTimeout, () {
+          subscription?.cancel();
+          client?.close(force: true);
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        });
 
         subscription = response.listen(
           (chunk) {
             if (stopwatch.elapsed >= _totalTimeout) {
               subscription?.cancel();
+              client?.close(force: true);
               if (!completer.isCompleted) completer.complete(false);
               return;
             }
@@ -451,6 +484,7 @@ class LinkPreviewService {
         );
 
         final success = await completer.future;
+        deadlineTimer.cancel();
         if (!success) {
           return null;
         }
@@ -485,6 +519,21 @@ class LinkPreviewService {
       Uri currentUri = initialUri;
       int redirects = 0;
 
+      Future<void> safeDrain(HttpClientResponse res) async {
+        final rem = _totalTimeout - stopwatch.elapsed;
+        if (rem <= Duration.zero) {
+          client?.close(force: true);
+          return;
+        }
+        try {
+          await res.drain().timeout(rem, onTimeout: () {
+            client?.close(force: true);
+          });
+        } catch (_) {
+          client?.close(force: true);
+        }
+      }
+
       while (redirects <= _maxRedirects) {
         final remaining = _totalTimeout - stopwatch.elapsed;
         if (remaining <= Duration.zero) return null;
@@ -502,18 +551,18 @@ class LinkPreviewService {
             (response.statusCode >= 300 && response.statusCode < 400)) {
           redirects++;
           if (redirects > _maxRedirects) {
-            await response.drain();
+            await safeDrain(response);
             return null;
           }
 
           final location = response.headers.value(HttpHeaders.locationHeader);
           if (location == null || location.isEmpty) {
-            await response.drain();
+            await safeDrain(response);
             return null;
           }
 
           final redirectUri = currentUri.resolve(location);
-          await response.drain();
+          await safeDrain(response);
 
           if (!await isSafeTarget(redirectUri)) {
             return null;
@@ -524,14 +573,14 @@ class LinkPreviewService {
         }
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
         // Strict image MIME validation
         final contentType = response.headers.contentType;
         if (contentType == null) {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
@@ -540,17 +589,30 @@ class LinkPreviewService {
             mime != 'image/png' &&
             mime != 'image/webp' &&
             mime != 'image/gif') {
-          await response.drain();
+          await safeDrain(response);
           return null;
         }
 
         final builder = BytesBuilder(copy: false);
         final completer = Completer<bool>();
 
+        final streamTimeout = _totalTimeout - stopwatch.elapsed;
+        if (streamTimeout <= Duration.zero) return null;
+
+        // REAL DEADLINE TIMER: Guarantees termination if image stream stalls without emitting chunks
+        final deadlineTimer = Timer(streamTimeout, () {
+          subscription?.cancel();
+          client?.close(force: true);
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        });
+
         subscription = response.listen(
           (chunk) {
             if (stopwatch.elapsed >= _totalTimeout) {
               subscription?.cancel();
+              client?.close(force: true);
               if (!completer.isCompleted) completer.complete(false);
               return;
             }
@@ -576,6 +638,7 @@ class LinkPreviewService {
         );
 
         final success = await completer.future;
+        deadlineTimer.cancel();
         if (!success) {
           return null;
         }

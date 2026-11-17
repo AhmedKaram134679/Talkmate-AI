@@ -55,18 +55,31 @@ void main() {
       expect(await LinkPreviewService.isSafeTarget(Uri.parse('http://db.internal/')), isFalse);
     });
 
+    test('enableExternalFetching is false by default and rejects external fetching', () async {
+      expect(LinkPreviewService.enableExternalFetching, isFalse);
+      // Even for an apparently valid public URL, fetching returns null when disabled
+      final result = await LinkPreviewService.instance.fetch('https://example.com/test');
+      expect(result, isNull);
+    });
+
     test('fetch returns null immediately for dangerous targets without sending network request', () async {
-      final result1 = await LinkPreviewService.instance.fetch('http://192.168.1.1/');
-      expect(result1, isNull);
+      // Temporarily enable external fetching to verify deep security target validation
+      LinkPreviewService.enableExternalFetching = true;
+      try {
+        final result1 = await LinkPreviewService.instance.fetch('http://192.168.1.1/');
+        expect(result1, isNull);
 
-      final result2 = await LinkPreviewService.instance.fetch('http://127.0.0.1:3000/');
-      expect(result2, isNull);
+        final result2 = await LinkPreviewService.instance.fetch('http://127.0.0.1:3000/');
+        expect(result2, isNull);
 
-      final result3 = await LinkPreviewService.instance.fetch('file:///C:/Windows/win.ini');
-      expect(result3, isNull);
+        final result3 = await LinkPreviewService.instance.fetch('file:///C:/Windows/win.ini');
+        expect(result3, isNull);
 
-      final result4 = await LinkPreviewService.instance.fetch('http://admin:pass@example.com');
-      expect(result4, isNull);
+        final result4 = await LinkPreviewService.instance.fetch('http://admin:pass@example.com');
+        expect(result4, isNull);
+      } finally {
+        LinkPreviewService.enableExternalFetching = false;
+      }
     });
 
     test('Open Graph image targeting private/local network is rejected during pre-flight validation', () async {

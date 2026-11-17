@@ -415,8 +415,19 @@ class AuthController extends GetxController {
         await _authService.signIn(email: email, password: password);
       }
 
-      // Invoke Supabase RPC to delete user account securely
-      await Supabase.instance.client.rpc('delete_user_account');
+      // Invoke server-controlled complete account deletion (cleans DB, storage, and deletes Supabase Auth identity)
+      try {
+        final res = await Supabase.instance.client.functions.invoke(
+          'delete-account',
+        );
+        if (res.status != 200) {
+          // Fail-safe fallback to direct RPC database cleanup if function returned non-200
+          await Supabase.instance.client.rpc('delete_user_account');
+        }
+      } catch (_) {
+        // Fail-safe fallback to direct RPC database cleanup
+        await Supabase.instance.client.rpc('delete_user_account');
+      }
 
       // Clear local caches and state
       final prefs = await SharedPreferences.getInstance();
