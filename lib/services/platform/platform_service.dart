@@ -142,7 +142,6 @@ class PlatformService extends GetxService {
         final recoveryCode = uri.queryParameters['code'];
         if (recoveryCode != null && recoveryCode.isNotEmpty) {
           DeepLinkLogger.log('RECOVERY_CODE_DETECTED');
-          DeepLinkLogger.log('RECOVERY_CODE_LENGTH = ${recoveryCode.length}');
           DeepLinkLogger.logNavigation('RESET_PASSWORD_SCREEN');
           
           try {
@@ -234,7 +233,6 @@ class PlatformService extends GetxService {
       // ⚠️ CRITICAL: Pass recovery code to screen, NOT exchange here.
       // All PKCE logic moved to ResetPasswordScreen.initState()
       DeepLinkLogger.log('RECOVERY_CODE_RECEIVED - passing to ResetPasswordScreen');
-      DeepLinkLogger.log('CODE_LENGTH = ${code.length}');
       
       // Queue navigation with recovery code parameter
       final isQueued = DeepLinkQueue().queueNavigation(

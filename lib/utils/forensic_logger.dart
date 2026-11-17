@@ -1,6 +1,26 @@
 import 'package:flutter/foundation.dart';
 
 class ForensicLogger {
+  /// Sanitize remote URLs by stripping query parameters (such as temporary HMAC signed tokens)
+  static String sanitizeUrl(String? url) {
+    if (url == null || url.isEmpty || url == 'N/A') return 'N/A';
+    try {
+      final uri = Uri.parse(url);
+      if (uri.hasQuery || uri.hasFragment) {
+        return Uri(
+          scheme: uri.scheme.isNotEmpty ? uri.scheme : null,
+          userInfo: uri.userInfo.isNotEmpty ? uri.userInfo : null,
+          host: uri.host.isNotEmpty ? uri.host : null,
+          port: uri.hasPort ? uri.port : null,
+          path: uri.path,
+        ).toString();
+      }
+      return url;
+    } catch (_) {
+      return '[REDACTED_URL]';
+    }
+  }
+
   static void log({
     required String tag,
     required String messageId,
@@ -38,7 +58,7 @@ class ForensicLogger {
       'originalFileName=${originalFileName ?? effectiveFilename}, '
       'localFilePath=$effectiveLocalFilePath, '
       'thumbnailPath=${thumbnailPath ?? "N/A"}, '
-      'remoteUrl=${remoteUrl ?? "N/A"}, '
+      'remoteUrl=${sanitizeUrl(remoteUrl)}, '
       'status=${status ?? "N/A"}, '
       'uploadProgress=$effectiveUploadProgress, '
       'generatedStorageKey=${generatedStorageKey ?? "N/A"}, '

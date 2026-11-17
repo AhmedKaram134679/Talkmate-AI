@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:talkmate_ai/utils/forensic_logger.dart';
 
-/// StorageService: wraps Supabase Storage uploads and returns public URLs
+/// StorageService: wraps Supabase Storage uploads and returns signed URLs for private bucket access
 /// 
 /// CRITICAL FIX: Uses runtime getter for Supabase client instead of early binding.
 /// This prevents race conditions during app startup and ensures the client is
@@ -21,7 +21,35 @@ class StorageService {
   
   static const String _bucket = 'talkmate';
 
-  /// Upload a file from an [XFile] to a storage [path] and return the public URL
+  /// Helper to create a signed URL with retry, avoiding broken publicUrl fallback on private bucket
+  Future<String> _createSignedUrlWithRetry(
+    SupabaseClient client,
+    String path,
+    int expiresInSeconds,
+  ) async {
+    try {
+      return await client.storage
+          .from(_bucket)
+          .createSignedUrl(path, expiresInSeconds);
+    } catch (firstError) {
+      debugPrint(
+        '⚠️ [StorageService] createSignedUrl initial attempt failed: $firstError. Retrying once...',
+      );
+      try {
+        await Future.delayed(const Duration(milliseconds: 500));
+        return await client.storage
+            .from(_bucket)
+            .createSignedUrl(path, expiresInSeconds);
+      } catch (retryError) {
+        debugPrint('❌ [StorageService] createSignedUrl retry failed: $retryError');
+        throw StorageException(
+          'Failed to generate signed URL for path: $path after retry ($retryError)',
+        );
+      }
+    }
+  }
+
+  /// Upload a file from an [XFile] to a storage [path] and return the signed URL
   Future<(String url, int size)> uploadFile({
     required XFile file,
     required String path,
@@ -79,19 +107,13 @@ class StorageService {
             ),
           ).timeout(const Duration(minutes: 5));
 
-      // Get short-lived signed URL (default 24h) for secure private bucket access, fallback to publicUrl
-      String url;
-      try {
-        url = await client.storage
-            .from(_bucket)
-            .createSignedUrl(path, 60 * 60 * 24);
-      } catch (e) {
-        debugPrint('⚠️ [StorageService] createSignedUrl fallback to getPublicUrl: $e');
-        url = client.storage.from(_bucket).getPublicUrl(path);
-      }
+      // Get short-lived signed URL (default 24h) for secure private bucket access
+      final url = await _createSignedUrlWithRetry(client, path, 60 * 60 * 24);
       final size = bytes.length;
 
-      debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+      debugPrint(
+        '✅ [StorageService] UPLOAD_STORAGE_SUCCESS: path=$path, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}',
+      );
 
       // Log STORAGE_UPLOAD_COMPLETED
       ForensicLogger.log(
@@ -173,18 +195,12 @@ class StorageService {
             ),
           ).timeout(const Duration(minutes: 15)); // Increased timeout for large videos
 
-      // Get short-lived signed URL (default 24h) for secure private bucket access, fallback to publicUrl
-      String url;
-      try {
-        url = await client.storage
-            .from(_bucket)
-            .createSignedUrl(path, 60 * 60 * 24);
-      } catch (e) {
-        debugPrint('⚠️ [StorageService] createSignedUrl fallback to getPublicUrl: $e');
-        url = client.storage.from(_bucket).getPublicUrl(path);
-      }
+      // Get short-lived signed URL (default 24h) for secure private bucket access
+      final url = await _createSignedUrlWithRetry(client, path, 60 * 60 * 24);
 
-      debugPrint('✅ [StorageService] UPLOAD_STORAGE_SUCCESS: url=$url, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}');
+      debugPrint(
+        '✅ [StorageService] UPLOAD_STORAGE_SUCCESS: path=$path, size=$size, taskId=${ctx['taskId']}, messageId=${ctx['messageId']}',
+      );
 
       // Log STORAGE_UPLOAD_COMPLETED
       ForensicLogger.log(
@@ -227,14 +243,7 @@ class StorageService {
 
   /// Generate a short-lived signed URL for a file in the private talkmate bucket
   Future<String> getSignedUrl(String path, {int expiresInSeconds = 86400}) async {
-    try {
-      return await _client.storage
-          .from(_bucket)
-          .createSignedUrl(path, expiresInSeconds);
-    } catch (e) {
-      debugPrint('⚠️ [StorageService] getSignedUrl fallback: $e');
-      return _client.storage.from(_bucket).getPublicUrl(path);
-    }
+    return _createSignedUrlWithRetry(_client, path, expiresInSeconds);
   }
 
   String _inferContentType(String path) {

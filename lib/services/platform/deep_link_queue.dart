@@ -67,7 +67,7 @@ class DeepLinkQueue {
     while (_queue.isNotEmpty) {
       final navigation = _queue.removeAt(0);
       DeepLinkLogger.log(
-        'EXECUTING_QUEUED_DEEP_LINK - route: ${navigation.routeName}, args: ${navigation.arguments}',
+        'EXECUTING_QUEUED_DEEP_LINK - route: ${navigation.routeName}, args: ${DeepLinkLogger.sanitizeMap(navigation.arguments)}',
       );
       
       try {

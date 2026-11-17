@@ -1,9 +1,14 @@
 import 'dart:io';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 /// Production-safe Deep Link diagnostic logger
-/// Writes to: C:\Temp\talkmate_deeplink.log (Windows)
-///            /tmp/talkmate_deeplink.log (Linux/macOS)
+/// Writes to app-private storage on mobile devices:
+///            Android: `<app_support_dir>`/talkmate_deeplink.log (sandboxed, never /sdcard)
+///            iOS: `<app_support_dir>`/talkmate_deeplink.log
+///            Windows: C:\Temp\talkmate_deeplink.log
+///            Linux/macOS: /tmp/talkmate_deeplink.log
 ///
 /// Usage:
 /// DeepLinkLogger.log('MESSAGE');
@@ -13,13 +18,27 @@ class DeepLinkLogger {
   static late File _logFile;
   static bool _initialized = false;
 
+  static const Set<String> _sensitiveKeyPatterns = {
+    'code',
+    'recoverycode',
+    'token',
+    'accesstoken',
+    'refreshtoken',
+    'password',
+    'secret',
+    'key',
+    'apikey',
+    'auth',
+    'authorization',
+  };
+
   /// Initialize logger (call once at app startup)
   static Future<void> initialize() async {
     if (_initialized) return;
 
     try {
-      final logPath = _getLogPath();
-      final logDir = Directory(logPath).parent;
+      final logPath = await _getLogPath();
+      final logDir = Directory(p.dirname(logPath));
 
       // Create directory if needed
       if (!await logDir.exists()) {
@@ -36,17 +55,71 @@ class DeepLinkLogger {
   }
 
   /// Get platform-specific log file path
-  static String _getLogPath() {
+  static Future<String> _getLogPath() async {
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        final dir = await getApplicationSupportDirectory();
+        return p.join(dir.path, 'talkmate_deeplink.log');
+      }
+    } catch (_) {
+      // Fallback if path_provider fails in headless/test environments
+    }
+
     if (Platform.isWindows) {
       return r'C:\Temp\talkmate_deeplink.log';
     } else if (Platform.isMacOS || Platform.isLinux) {
       return '/tmp/talkmate_deeplink.log';
-    } else if (Platform.isAndroid) {
-      return '/sdcard/talkmate_deeplink.log';
-    } else if (Platform.isIOS) {
-      return '/tmp/talkmate_deeplink.log';
     }
     return '/tmp/talkmate_deeplink.log';
+  }
+
+  /// Sanitize query parameters or map arguments to avoid leaking secrets/tokens
+  static Map<String, dynamic> sanitizeMap(Map<String, dynamic>? map) {
+    if (map == null) return {};
+    final sanitized = <String, dynamic>{};
+    for (final entry in map.entries) {
+      final normalizedKey =
+          entry.key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final isSensitive = _sensitiveKeyPatterns.any(
+        (pattern) => normalizedKey.contains(pattern),
+      );
+      if (isSensitive) {
+        sanitized[entry.key] = '[REDACTED]';
+      } else if (entry.value is Map<String, dynamic>) {
+        sanitized[entry.key] =
+            sanitizeMap(entry.value as Map<String, dynamic>);
+      } else {
+        sanitized[entry.key] = entry.value;
+      }
+    }
+    return sanitized;
+  }
+
+  /// Build a sanitized representation of a URI with sensitive query parameters and fragments redacted
+  static String sanitizeUri(Uri? uri) {
+    if (uri == null) return 'null';
+    try {
+      final sanitizedQueryParams = uri.queryParameters.map((key, value) {
+        final normalizedKey =
+            key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final isSensitive = _sensitiveKeyPatterns.any(
+          (pattern) => normalizedKey.contains(pattern),
+        );
+        return MapEntry(
+          key,
+          isSensitive ? '[REDACTED]' : value,
+        );
+      });
+
+      final sanitized = uri.replace(
+        queryParameters:
+            sanitizedQueryParams.isNotEmpty ? sanitizedQueryParams : null,
+        fragment: uri.hasFragment ? '[REDACTED]' : null,
+      );
+      return sanitized.toString();
+    } catch (_) {
+      return '[REDACTED_URI]';
+    }
   }
 
   /// Log a simple message with timestamp
@@ -67,17 +140,22 @@ class DeepLinkLogger {
     }
   }
 
-  /// Log a URI with all components parsed
+  /// Log a URI safely without leaking sensitive tokens or query strings
   static void logUri(Uri? uri, {String prefix = 'URI'}) {
     if (!_initialized || uri == null) return;
 
     try {
-      log('$prefix = $uri');
+      log('$prefix = ${sanitizeUri(uri)}');
       log('  SCHEME = ${uri.scheme}');
       log('  HOST = ${uri.host}');
       log('  PATH = ${uri.path}');
       log('  PATH_SEGMENTS = ${uri.pathSegments.join("/")}');
-      log('  QUERY = ${uri.query}');
+      if (uri.queryParameters.isNotEmpty) {
+        log('  QUERY_KEYS = ${uri.queryParameters.keys.join(", ")}');
+      } else {
+        log('  QUERY_KEYS = (none)');
+      }
+      log('  HAS_FRAGMENT = ${uri.hasFragment}');
     } catch (e) {
       // Silently fail
     }
@@ -119,14 +197,14 @@ class DeepLinkLogger {
     }
   }
 
-  /// Log navigation attempt
+  /// Log navigation attempt with sanitized arguments
   static void logNavigation(String destination, {Map<String, dynamic>? args}) {
     if (!_initialized) return;
 
     try {
       String msg = 'NAVIGATING TO $destination';
-      if (args != null) {
-        msg += ' (args: $args)';
+      if (args != null && args.isNotEmpty) {
+        msg += ' (args: ${sanitizeMap(args)})';
       }
       log(msg);
     } catch (e) {

@@ -75,7 +75,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   /// Exchange PKCE recovery code for session
   Future<void> _performCodeExchange(String code) async {
     try {
-      debugPrint('🔄 Attempting PKCE code exchange with code: ${code.substring(0, 8)}...');
+      debugPrint('🔄 Attempting PKCE code exchange...');
       
       // Exchange code for session
       await _supabase.auth.exchangeCodeForSession(code);
@@ -87,7 +87,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         throw Exception('Recovery session was not created after code exchange');
       }
       
-      debugPrint('✅ Recovery session created for user: ${session.user.email}');
+      debugPrint('✅ Recovery session created for user: ${session.user.id}');
     } catch (e) {
       debugPrint('❌ Code exchange failed: $e');
       // Use user-friendly error message
@@ -109,7 +109,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         });
         debugPrint('ResetPasswordScreen: No active session found');
       } else {
-        debugPrint('✅ ResetPasswordScreen: Active session verified for user ${session.user.email}');
+        debugPrint('✅ ResetPasswordScreen: Active session verified for user ${session.user.id}');
       }
     } catch (e) {
       setState(() {
