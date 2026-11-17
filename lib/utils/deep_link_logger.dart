@@ -134,17 +134,43 @@ class DeepLinkLogger {
     }
   }
 
-  /// Log an exception with sanitized context and runtimeType (never raw message/PII)
+  static const Set<String> _allowedRoutes = {
+    '/',
+    '/auth/login',
+    '/auth/register',
+    '/auth/reset-password',
+    '/home',
+    '/chat',
+    '/chat/details',
+    '/settings',
+    '/call',
+    '/profile',
+    '/groups/create',
+  };
+
+  static String _safeRoute(String destination) {
+    final clean = destination.trim().split('?').first;
+    if (_allowedRoutes.contains(clean)) return clean;
+    return '[OTHER_ROUTE]';
+  }
+
+  static String _safeFailureReason(String reason) {
+    final lower = reason.toLowerCase();
+    if (lower.contains('not found') || lower.contains('404')) return 'ROUTE_NOT_FOUND';
+    if (lower.contains('auth') || lower.contains('unauthorized') || lower.contains('login')) return 'AUTH_REQUIRED';
+    if (lower.contains('cancel')) return 'USER_CANCELLED';
+    if (lower.contains('param') || lower.contains('argument') || lower.contains('invalid')) return 'INVALID_PARAMS';
+    return 'NAVIGATION_ERROR';
+  }
+
+  /// Log an exception with sanitized context and runtimeType (never raw message/PII/stackTrace)
   static void logException(String context, Object exception, {StackTrace? stackTrace}) {
     if (!_initialized) return;
 
     try {
       log('EXCEPTION [$context]: errorType=${exception.runtimeType}');
-      if (stackTrace != null) {
-        // Log stack trace frames safely
-        log('STACK_TRACE: $stackTrace');
-      }
-    } catch (e) {
+      // Stack traces are omitted in production diagnostics to avoid leaking internal paths or tokens
+    } catch (_) {
       // Silently fail
     }
   }
@@ -154,8 +180,8 @@ class DeepLinkLogger {
     if (!_initialized) return;
 
     try {
-      log('CHECKING $routeName');
-    } catch (e) {
+      log('CHECKING ${_safeRoute(routeName)}');
+    } catch (_) {
       // Silently fail
     }
   }
@@ -165,8 +191,8 @@ class DeepLinkLogger {
     if (!_initialized) return;
 
     try {
-      log('✓ MATCHED $routeName');
-    } catch (e) {
+      log('✓ MATCHED ${_safeRoute(routeName)}');
+    } catch (_) {
       // Silently fail
     }
   }
@@ -176,12 +202,12 @@ class DeepLinkLogger {
     if (!_initialized) return;
 
     try {
-      String msg = 'NAVIGATING TO $destination';
+      String msg = 'NAVIGATING TO ${_safeRoute(destination)}';
       if (args != null && args.isNotEmpty) {
         msg += ' (args: ${sanitizeMap(args)})';
       }
       log(msg);
-    } catch (e) {
+    } catch (_) {
       // Silently fail
     }
   }
@@ -191,8 +217,8 @@ class DeepLinkLogger {
     if (!_initialized) return;
 
     try {
-      log('✓ NAVIGATION SUCCESS: $destination');
-    } catch (e) {
+      log('✓ NAVIGATION SUCCESS: ${_safeRoute(destination)}');
+    } catch (_) {
       // Silently fail
     }
   }
@@ -202,8 +228,8 @@ class DeepLinkLogger {
     if (!_initialized) return;
 
     try {
-      log('✗ NAVIGATION FAILED: $destination - $reason');
-    } catch (e) {
+      log('✗ NAVIGATION FAILED: ${_safeRoute(destination)} - ${_safeFailureReason(reason)}');
+    } catch (_) {
       // Silently fail
     }
   }
@@ -222,7 +248,7 @@ class DeepLinkLogger {
     try {
       await _logFile.writeAsString('');
       log('LOG CLEARED');
-    } catch (e) {
+    } catch (_) {
       // Silently fail
     }
   }
@@ -233,8 +259,8 @@ class DeepLinkLogger {
 
     try {
       return await _logFile.readAsString();
-    } catch (e) {
-      return 'Error reading log: $e';
+    } catch (_) {
+      return 'Error reading log: [FAILED]';
     }
   }
 }

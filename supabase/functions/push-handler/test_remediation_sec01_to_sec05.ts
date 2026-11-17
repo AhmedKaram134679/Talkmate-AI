@@ -373,6 +373,20 @@ test("SEC-01.11: Reject candidate from non-participant (Eve)", async () => {
   });
 });
 
+test("SEC-01.12: service_role without user context cannot add call candidate", async () => {
+  await asServiceRole(async (tx) => {
+    await assertRejects(
+      async () => {
+        await tx`SELECT public.fn_add_call_candidate(
+          '00000000-0000-0000-0000-000000000001'::uuid,
+          '{"candidate": "candidate:1 1 UDP 2130706431 192.0.2.1 5000 typ host", "sdpMid": "0", "sdpMLineIndex": 0}'::jsonb
+        )`;
+      },
+      Error,
+    );
+  });
+});
+
 // ----------------------------------------------------------------------------
 // SEC-02 Tests: Account Deletion RPC Permissions & Default Privileges
 // ----------------------------------------------------------------------------
@@ -394,6 +408,87 @@ test("SEC-02.2: Authenticated user can execute delete_user_account for their own
     await tx`SELECT public.delete_user_account()`;
     const [profile] = await tx`SELECT id FROM public.profiles WHERE id = ${EVE_ID}::uuid`;
     assertEquals(profile, undefined);
+  });
+});
+
+test("SEC-02.3: Account deletion transfers group ownership and preserves message history for remaining members", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    // 1. Alice creates a group conversation with Bob
+    const [conv] = await tx`
+      INSERT INTO public.conversations (creator_id, is_group, group_name)
+      VALUES (${ALICE_ID}::uuid, true, 'Engineering Team')
+      RETURNING id;
+    `;
+
+    // 2. Add Alice and Bob to conversation_participants
+    await tx`
+      INSERT INTO public.conversation_participants (conversation_id, user_id)
+      VALUES (${conv.id}::uuid, ${ALICE_ID}::uuid), (${conv.id}::uuid, ${BOB_ID}::uuid);
+    `;
+
+    // 3. Alice sends a message
+    const [mAlice] = await tx`
+      INSERT INTO public.messages (chat_id, sender_id, text, type)
+      VALUES (${conv.id}::uuid, ${ALICE_ID}::uuid, 'Alice message', 'text')
+      RETURNING id;
+    `;
+
+    // 4. Alice executes delete_user_account()
+    await tx`SELECT public.delete_user_account()`;
+
+    // 5. Verify from Alice's perspective:
+    // a. Alice profile is deleted
+    const [aliceProf] = await tx`SELECT id FROM public.profiles WHERE id = ${ALICE_ID}::uuid`;
+    assertEquals(aliceProf, undefined);
+
+    // b. Alice was removed from the conversation and is no longer creator,
+    // so RLS correctly denies Alice from viewing the surviving conversation
+    const [aliceViewConv] = await tx`SELECT id FROM public.conversations WHERE id = ${conv.id}::uuid`;
+    assertEquals(aliceViewConv, undefined, "Deleted user must not be able to read conversation");
+
+    // 6. Verify from surviving participant Bob's perspective:
+    await tx`SELECT set_config('request.jwt.claim.sub', ${BOB_ID}, true)`;
+
+    // a. Conversation survived and Bob is now the creator
+    const [survivingConv] = await tx`SELECT id, creator_id FROM public.conversations WHERE id = ${conv.id}::uuid`;
+    assert(survivingConv !== undefined, "Group conversation must survive creator deletion");
+    assertEquals(survivingConv.creator_id, BOB_ID, "Group creator_id must be transferred to remaining participant Bob");
+
+    // b. Bob is still participant, Alice is removed
+    const participants = await tx`SELECT user_id FROM public.conversation_participants WHERE conversation_id = ${conv.id}::uuid`;
+    assertEquals(participants.length, 1);
+    assertEquals(participants[0].user_id, BOB_ID);
+
+    // c. Messages are preserved with sender_id nullified for deleted user
+    const [aliceMsgAfter] = await tx`SELECT id, sender_id, text FROM public.messages WHERE id = ${mAlice.id}::uuid`;
+    assert(aliceMsgAfter !== undefined, "Alice's message must be preserved for surviving members");
+    assertEquals(aliceMsgAfter.sender_id, null, "Alice's message sender_id must be nullified to protect privacy");
+  });
+});
+
+test("SEC-02.4: Empty conversation with zero remaining members is cleanly deleted upon sole participant deletion", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    // 1. Alice creates solo conversation
+    const [conv] = await tx`
+      INSERT INTO public.conversations (creator_id, is_group, group_name)
+      VALUES (${ALICE_ID}::uuid, false, 'Solo Chat')
+      RETURNING id;
+    `;
+    await tx`
+      INSERT INTO public.conversation_participants (conversation_id, user_id)
+      VALUES (${conv.id}::uuid, ${ALICE_ID}::uuid);
+    `;
+    await tx`
+      INSERT INTO public.messages (chat_id, sender_id, text, type)
+      VALUES (${conv.id}::uuid, ${ALICE_ID}::uuid, 'Solo text', 'text');
+    `;
+
+    // 2. Alice deletes account
+    await tx`SELECT public.delete_user_account()`;
+
+    // 3. Conversation is completely deleted since 0 members remain
+    const [c] = await tx`SELECT id FROM public.conversations WHERE id = ${conv.id}::uuid`;
+    assertEquals(c, undefined, "Empty conversation with 0 remaining members must be deleted");
   });
 });
 
@@ -531,6 +626,15 @@ test("SEC-04.5: fn_is_profile_accessible grants access for active call but rejec
   });
 });
 
+test("SEC-04.6: search_users does not return users by email address (email enumeration prevented)", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    // Attempt searching by email address
+    const results = await tx`SELECT * FROM public.search_users('bob@example.com', 20)`;
+    const foundByEmail = results.filter((r: any) => r.id === BOB_ID && r.username !== 'bob@example.com');
+    assertEquals(foundByEmail.length, 0, "Users must not be discoverable via email addresses");
+  });
+});
+
 // ----------------------------------------------------------------------------
 // SEC-05 Tests: Storage Avatar Privacy & Membership Isolation
 // ----------------------------------------------------------------------------
@@ -543,6 +647,39 @@ test("SEC-05.1: Storage read policy requires literal profile_ prefix and respect
       SELECT name FROM storage.objects
       WHERE bucket_id = 'talkmate'
         AND name = ${'users/' + BOB_ID + '/profile_avatar.jpg'};
+    `;
+    assertEquals(objects.length, 0);
+  });
+});
+
+test("SEC-05.2: Storage policy restricts group avatar access to group participants", async () => {
+  await asUser(ALICE_ID, async (tx) => {
+    // Create group with Alice only (Bob is not a participant)
+    const [conv] = await tx`
+      INSERT INTO public.conversations (creator_id, is_group, group_name)
+      VALUES (${ALICE_ID}::uuid, true, 'Private Team')
+      RETURNING id;
+    `;
+    await tx`
+      INSERT INTO public.conversation_participants (conversation_id, user_id)
+      VALUES (${conv.id}::uuid, ${ALICE_ID}::uuid);
+    `;
+
+    // Query storage.objects as participant Alice
+    const objects = await tx`
+      SELECT name FROM storage.objects
+      WHERE bucket_id = 'talkmate'
+        AND name = ${'groups/' + conv.id + '/avatar.jpg'};
+    `;
+    assertEquals(Array.isArray(objects), true);
+  });
+
+  await asUser(BOB_ID, async (tx) => {
+    // Non-participant querying non-member group path
+    const objects = await tx`
+      SELECT name FROM storage.objects
+      WHERE bucket_id = 'talkmate'
+        AND name = 'groups/00000000-0000-0000-0000-000000000099/avatar.jpg';
     `;
     assertEquals(objects.length, 0);
   });

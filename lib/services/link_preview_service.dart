@@ -47,7 +47,10 @@ class LinkPreviewService {
   static const int _maxImageBytes = 256 * 1024; // 256 KB limit for Open Graph preview images
   static const int _maxRedirects = 3;
   static const Duration _connectTimeout = Duration(seconds: 4);
-  static const Duration _totalTimeout = Duration(seconds: 6);
+  static const Duration _totalTimeout = Duration(seconds: 8);
+
+  /// Operational feature flag: allows fail-closed behavior if external network fetching is disabled
+  static bool enableExternalFetching = true;
 
   /// Check whether an IP address belongs to loopback, private, link-local, multicast, or reserved ranges
   static bool isPrivateOrLocalAddress(InternetAddress address) {
@@ -172,7 +175,7 @@ class LinkPreviewService {
         return !isPrivateOrLocalAddress(directIp);
       }
 
-      // 5. DNS Resolution and DNS rebinding / private IP check
+      // 5. Preflight DNS resolution check
       final addresses = await InternetAddress.lookup(host).timeout(
         const Duration(seconds: 3),
         onTimeout: () => [],
@@ -193,10 +196,68 @@ class LinkPreviewService {
     }
   }
 
+  /// Creates an HttpClient that pins connection to an approved safe IP address at connection time,
+  /// eliminating Time-of-Check to Time-of-Use DNS rebinding vulnerabilities while preserving TLS SNI.
+  static HttpClient _createPinningClient(Duration timeout) {
+    final client = HttpClient();
+    client.connectionTimeout = timeout;
+    client.autoUncompress = true;
+
+    client.connectionFactory =
+        (Uri uri, String? proxyHost, int? proxyPort) async {
+      final host = uri.host.trim().toLowerCase();
+      final port = uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
+
+      // 1. Connection-time destination IP validation and pinning
+      InternetAddress? pinnedIp;
+      final directIp = InternetAddress.tryParse(host);
+      if (directIp != null) {
+        if (isPrivateOrLocalAddress(directIp)) {
+          throw SocketException('Access to private/local address is forbidden: $directIp',
+              address: directIp, port: port);
+        }
+        pinnedIp = directIp;
+      } else {
+        final addresses = await InternetAddress.lookup(host).timeout(
+          timeout,
+          onTimeout: () => [],
+        );
+
+        if (addresses.isEmpty) {
+          throw SocketException('DNS resolution failed or timed out for $host', port: port);
+        }
+
+        // Validate all resolved addresses; reject if any forbidden destination is present
+        for (final addr in addresses) {
+          if (isPrivateOrLocalAddress(addr)) {
+            throw SocketException(
+                'DNS resolved to forbidden destination: ${addr.address}',
+                address: addr,
+                port: port);
+          }
+        }
+
+        // Pin socket directly to the first approved address
+        pinnedIp = addresses.first;
+      }
+
+      // 2. Establish raw TCP connection directly to the pinned IP address
+      // Dart HttpClient will wrap this socket in SecureSocket.secure(..., host: uri.host)
+      // for HTTPS connections, preserving SNI and full certificate validation.
+      return Socket.startConnect(pinnedIp, port);
+    };
+
+    return client;
+  }
+
   Future<LinkPreviewData?> fetch(
     String url, {
     Duration ttl = const Duration(days: 3),
   }) async {
+    if (!enableExternalFetching) {
+      return null;
+    }
+
     try {
       final initialUri = Uri.tryParse(url);
       if (initialUri == null) return null;
@@ -222,7 +283,10 @@ class LinkPreviewService {
         return null;
       }
 
-      final html = await _fetchHtmlSecurely(initialUri).timeout(_totalTimeout);
+      // Shared stopwatch to enforce hard total deadline across all redirects and image fetch
+      final stopwatch = Stopwatch()..start();
+
+      final html = await _fetchHtmlSecurely(initialUri, stopwatch);
       if (html == null || html.isEmpty) return null;
 
       String? extractMeta(String pattern) {
@@ -252,9 +316,8 @@ class LinkPreviewService {
       if (image != null && image.isNotEmpty) {
         final resolvedImageUri = initialUri.resolve(image);
         if (await isSafeTarget(resolvedImageUri)) {
-          // Fetch image bytes securely through same protected pipeline
-          imageBytes = await _fetchImageBytesSecurely(resolvedImageUri)
-              .timeout(const Duration(seconds: 4), onTimeout: () => null);
+          // Fetch image bytes securely through same protected pipeline with shared deadline
+          imageBytes = await _fetchImageBytesSecurely(resolvedImageUri, stopwatch);
         } else {
           image = null;
         }
@@ -282,24 +345,33 @@ class LinkPreviewService {
     }
   }
 
-  /// Securely fetch HTML using streaming, timeout, strict Content-Type checks, and redirect validation
-  Future<String?> _fetchHtmlSecurely(Uri initialUri) async {
+  /// Securely fetch HTML using connection-time IP pinning, strict streaming cancellation,
+  /// strict Content-Type checks, and redirect revalidation.
+  Future<String?> _fetchHtmlSecurely(Uri initialUri, Stopwatch stopwatch) async {
     HttpClient? client;
+    StreamSubscription<List<int>>? subscription;
     try {
-      client = HttpClient();
-      client.connectionTimeout = _connectTimeout;
-      client.autoUncompress = true;
+      final remainingInitial = _totalTimeout - stopwatch.elapsed;
+      if (remainingInitial <= Duration.zero) return null;
+
+      final connectTimeout = remainingInitial < _connectTimeout ? remainingInitial : _connectTimeout;
+      client = _createPinningClient(connectTimeout);
 
       Uri currentUri = initialUri;
       int redirects = 0;
 
       while (redirects <= _maxRedirects) {
-        final request = await client.getUrl(currentUri).timeout(_connectTimeout);
-        request.followRedirects = false; // Handle redirects manually to re-verify each hop
+        final remaining = _totalTimeout - stopwatch.elapsed;
+        if (remaining <= Duration.zero) return null;
+
+        final stepTimeout = remaining < _connectTimeout ? remaining : _connectTimeout;
+
+        final request = await client.getUrl(currentUri).timeout(stepTimeout);
+        request.followRedirects = false; // Handle redirects manually
         request.headers.set(HttpHeaders.acceptHeader, 'text/html, application/xhtml+xml');
         request.headers.set(HttpHeaders.userAgentHeader, 'TalkMate-LinkPreview/1.0');
 
-        final response = await request.close().timeout(_connectTimeout);
+        final response = await request.close().timeout(stepTimeout);
 
         // Check for redirects (301, 302, 303, 307, 308)
         if (response.isRedirect ||
@@ -346,18 +418,41 @@ class LinkPreviewService {
           return null;
         }
 
-        // Read stream with strict byte size limit to prevent memory exhaustion
+        // Read stream with real cancellation and hard size limit
         final builder = BytesBuilder(copy: false);
-        await for (final chunk in response) {
-          if (builder.length + chunk.length > _maxResponseBytes) {
-            final remaining = _maxResponseBytes - builder.length;
-            if (remaining > 0) {
-              builder.add(chunk.sublist(0, remaining));
+        final completer = Completer<bool>();
+
+        subscription = response.listen(
+          (chunk) {
+            if (stopwatch.elapsed >= _totalTimeout) {
+              subscription?.cancel();
+              if (!completer.isCompleted) completer.complete(false);
+              return;
             }
-            break;
-          } else {
-            builder.add(chunk);
-          }
+
+            if (builder.length + chunk.length > _maxResponseBytes) {
+              final remainingBytes = _maxResponseBytes - builder.length;
+              if (remainingBytes > 0) {
+                builder.add(chunk.sublist(0, remainingBytes));
+              }
+              subscription?.cancel();
+              if (!completer.isCompleted) completer.complete(true);
+            } else {
+              builder.add(chunk);
+            }
+          },
+          onError: (_) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+          onDone: () {
+            if (!completer.isCompleted) completer.complete(true);
+          },
+          cancelOnError: true,
+        );
+
+        final success = await completer.future;
+        if (!success) {
+          return null;
         }
 
         final bytes = builder.takeBytes();
@@ -371,28 +466,37 @@ class LinkPreviewService {
     } catch (_) {
       return null;
     } finally {
+      await subscription?.cancel();
       client?.close(force: true);
     }
   }
 
-  /// Securely fetch preview image bytes without exposing UI to direct untrusted network fetching
-  Future<Uint8List?> _fetchImageBytesSecurely(Uri initialUri) async {
+  /// Securely fetch preview image bytes with connection-time IP pinning, size caps, and cancellation
+  Future<Uint8List?> _fetchImageBytesSecurely(Uri initialUri, Stopwatch stopwatch) async {
     HttpClient? client;
+    StreamSubscription<List<int>>? subscription;
     try {
-      client = HttpClient();
-      client.connectionTimeout = _connectTimeout;
-      client.autoUncompress = true;
+      final remainingInitial = _totalTimeout - stopwatch.elapsed;
+      if (remainingInitial <= Duration.zero) return null;
+
+      final connectTimeout = remainingInitial < _connectTimeout ? remainingInitial : _connectTimeout;
+      client = _createPinningClient(connectTimeout);
 
       Uri currentUri = initialUri;
       int redirects = 0;
 
       while (redirects <= _maxRedirects) {
-        final request = await client.getUrl(currentUri).timeout(_connectTimeout);
+        final remaining = _totalTimeout - stopwatch.elapsed;
+        if (remaining <= Duration.zero) return null;
+
+        final stepTimeout = remaining < _connectTimeout ? remaining : _connectTimeout;
+
+        final request = await client.getUrl(currentUri).timeout(stepTimeout);
         request.followRedirects = false;
         request.headers.set(HttpHeaders.acceptHeader, 'image/jpeg, image/png, image/webp, image/gif');
         request.headers.set(HttpHeaders.userAgentHeader, 'TalkMate-LinkPreview/1.0');
 
-        final response = await request.close().timeout(_connectTimeout);
+        final response = await request.close().timeout(stepTimeout);
 
         if (response.isRedirect ||
             (response.statusCode >= 300 && response.statusCode < 400)) {
@@ -441,16 +545,39 @@ class LinkPreviewService {
         }
 
         final builder = BytesBuilder(copy: false);
-        await for (final chunk in response) {
-          if (builder.length + chunk.length > _maxImageBytes) {
-            final remaining = _maxImageBytes - builder.length;
-            if (remaining > 0) {
-              builder.add(chunk.sublist(0, remaining));
+        final completer = Completer<bool>();
+
+        subscription = response.listen(
+          (chunk) {
+            if (stopwatch.elapsed >= _totalTimeout) {
+              subscription?.cancel();
+              if (!completer.isCompleted) completer.complete(false);
+              return;
             }
-            break;
-          } else {
-            builder.add(chunk);
-          }
+
+            if (builder.length + chunk.length > _maxImageBytes) {
+              final remainingBytes = _maxImageBytes - builder.length;
+              if (remainingBytes > 0) {
+                builder.add(chunk.sublist(0, remainingBytes));
+              }
+              subscription?.cancel();
+              if (!completer.isCompleted) completer.complete(true);
+            } else {
+              builder.add(chunk);
+            }
+          },
+          onError: (_) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+          onDone: () {
+            if (!completer.isCompleted) completer.complete(true);
+          },
+          cancelOnError: true,
+        );
+
+        final success = await completer.future;
+        if (!success) {
+          return null;
         }
 
         final bytes = builder.takeBytes();
@@ -461,6 +588,7 @@ class LinkPreviewService {
     } catch (_) {
       return null;
     } finally {
+      await subscription?.cancel();
       client?.close(force: true);
     }
   }

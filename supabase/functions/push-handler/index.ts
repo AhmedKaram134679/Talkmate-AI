@@ -712,7 +712,7 @@ serve(async (req) => {
     // Verify user JWT with Supabase Auth
     const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !userData?.user) {
-      console.warn("⛔ Unauthorized push-handler request: Invalid JWT", authError);
+      console.warn("⛔ Unauthorized push-handler request: Invalid JWT");
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
@@ -771,7 +771,7 @@ serve(async (req) => {
           .single();
 
         if (callError || !callRecord) {
-          console.warn(`⛔ Forbidden: Call record not found for id ${callId}:`, callError);
+          console.warn(`⛔ Forbidden: Call record not found for id ${callId}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced call record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -825,7 +825,7 @@ serve(async (req) => {
           .single();
 
         if (roomError || !roomRecord) {
-          console.warn(`⛔ Forbidden: Room record not found for id ${roomId}:`, roomError);
+          console.warn(`⛔ Forbidden: Room record not found for id ${roomId}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced room record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -867,7 +867,7 @@ serve(async (req) => {
           .single();
 
         if (msgError || !messageRecord) {
-          console.warn(`⛔ Forbidden: Message record not found for id ${message_id}:`, msgError);
+          console.warn(`⛔ Forbidden: Message record not found for id ${message_id}`);
           return new Response(JSON.stringify({ error: "Forbidden: Referenced message record not found" }), {
             status: 403,
             headers: { "Content-Type": "application/json" }
@@ -2718,7 +2718,11 @@ serve(async (req) => {
                     });
 
                     if (!res.success) {
-                        console.error(`❌ FCM Failure for ${target.recipient_id}:`, res.error);
+                        console.error(JSON.stringify({
+                            event: "FCM_DELIVERY_FAILURE",
+                            recipient_id: target.recipient_id,
+                            errorCode: res.error?.code || "unknown",
+                        }));
                         _resolveFallback({
                             userId: target.recipient_id,
                             scenario: content_type || 'chat',
@@ -2761,7 +2765,11 @@ serve(async (req) => {
                     });
                 // deno-lint-ignore no-explicit-any
                 } catch (wpError: any) {
-                    console.error(`❌ Web Push Failure for ${target.recipient_id}:`, wpError);
+                    console.error(JSON.stringify({
+                        event: "WEB_PUSH_DELIVERY_FAILURE",
+                        recipient_id: target.recipient_id,
+                        statusCode: wpError?.statusCode || 500,
+                    }));
                     failureCount++;
 
                     supabaseAdmin.from('routing_logs').update({
@@ -2788,7 +2796,10 @@ serve(async (req) => {
             return { success: successCount, failure: failureCount };
 
         } catch (systemError) {
-             console.error("🔥 PUSH SYSTEM ERROR:", systemError);
+             console.error(JSON.stringify({
+                 event: "PUSH_SYSTEM_ERROR",
+                 errorCategory: systemError instanceof Error ? systemError.name : typeof systemError,
+             }));
              await supabaseAdmin.rpc('trip_circuit_breaker', { p_service_name: 'fcm', p_force_open: false });
 
              batchTargets.forEach(t => {
@@ -2820,8 +2831,14 @@ serve(async (req) => {
 
   } catch (err: unknown) {
     const error = err as Error;
-    console.error("❌ AI Routing Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    console.error(JSON.stringify({
+      event: "AI_ROUTING_ERROR",
+      errorCategory: error.name || "Error",
+    }));
+    return new Response(JSON.stringify({ error: "Internal processing error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 });
 
