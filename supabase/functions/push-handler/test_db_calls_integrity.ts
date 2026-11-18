@@ -4,69 +4,38 @@
 
 import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
+import { getVerifiedStagingPostgresEnvironment } from "../_shared/test_staging_guard.ts";
 
-async function getCredentials() {
-  if (Deno.env.get("PGPASSWORD")) {
-    return {
-      host: Deno.env.get("PGHOST") || "aws-1-eu-central-1.pooler.supabase.com",
-      port: Number(Deno.env.get("PGPORT") || 5432),
-      user: Deno.env.get("PGUSER") || "cli_login_postgres.icdbbfsjbslzctshxytd",
-      pass: Deno.env.get("PGPASSWORD")!,
-      database: Deno.env.get("PGDATABASE") || "postgres",
-    };
-  }
+const pgEnv = getVerifiedStagingPostgresEnvironment();
+const sql = pgEnv
+  ? postgres({
+      host: pgEnv.host,
+      port: pgEnv.port,
+      user: pgEnv.user,
+      pass: pgEnv.pass,
+      database: pgEnv.database,
+      ssl: "require",
+      connect_timeout: 30,
+      idle_timeout: 10,
+      max: 5,
+    })
+  : null;
 
-  // Obtain dynamically via supabase db dump --dry-run
-  const cmd = new Deno.Command("supabase", {
-    args: ["db", "dump", "--dry-run"],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const output = await cmd.output();
-  const text = new TextDecoder().decode(output.stdout);
+// Dynamic, isolated test identities generated per test run
+const ALICE_ID = crypto.randomUUID();
+const BOB_ID = crypto.randomUUID();
+const EVE_ID = crypto.randomUUID();
+const CHARLIE_ID = crypto.randomUUID();
 
-  const hostMatch = text.match(/export PGHOST="([^"]+)"/);
-  const portMatch = text.match(/export PGPORT="([^"]+)"/);
-  const userMatch = text.match(/export PGUSER="([^"]+)"/);
-  const passMatch = text.match(/export PGPASSWORD="([^"]+)"/);
-  const dbMatch = text.match(/export PGDATABASE="([^"]+)"/);
-
-  if (!passMatch || !userMatch) {
-    throw new Error("Could not extract pooler credentials from supabase db dump --dry-run");
-  }
-
-  return {
-    host: hostMatch ? hostMatch[1] : "aws-1-eu-central-1.pooler.supabase.com",
-    port: portMatch ? Number(portMatch[1]) : 5432,
-    user: userMatch[1],
-    pass: passMatch[1],
-    database: dbMatch ? dbMatch[1] : "postgres",
-  };
-}
-
-const creds = await getCredentials();
-const sql = postgres({
-  host: creds.host,
-  port: creds.port,
-  user: creds.user,
-  pass: creds.pass,
-  database: creds.database,
-  ssl: { rejectUnauthorized: false },
-});
-
-// Real UUIDs existing in auth.users
-const ALICE_ID = "20f672ea-ebc9-49d1-9a8a-acd4fa703b7c";
-const BOB_ID = "4043be4d-3312-4fac-a0db-3b1502a0d572";
-const EVE_ID = "2ae1af25-46ff-417d-b5a0-449bbbc0c1c5";
-const CHARLIE_ID = "33333333-3333-3333-3333-333333333333";
+const stagingHost = pgEnv ? `${pgEnv.projectRef}.supabase.co` : "staging.supabase.co";
 
 // Helper to run query as an authenticated Supabase user with automatic rollback
 async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE authenticated`;
     await tx`SELECT set_config('request.jwt.claim.sub', ${userId}, true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__"); // Deterministic rollback so test records never persist
   }).catch((err) => {
@@ -78,10 +47,10 @@ async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
 
 // Helper to run query as service_role
 async function asServiceRole(callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE service_role`;
     await tx`SELECT set_config('request.jwt.claim.role', 'service_role', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__");
   }).catch((err) => {
@@ -94,6 +63,7 @@ async function asServiceRole(callback: (tx: any) => Promise<void>) {
 function test(name: string, fn: () => Promise<void>) {
   Deno.test({
     name,
+    ignore: !sql,
     sanitizeOps: false,
     sanitizeResources: false,
     fn,
@@ -758,5 +728,7 @@ test("26. SECURITY: Authenticated user cannot execute fn_protect_calls_integrity
 
 // Close database connection
 test("Cleanup connection", async () => {
-  await sql.end();
+  if (sql) {
+    await sql.end();
+  }
 });

@@ -48,13 +48,19 @@ export async function listAllStorageFiles(
   bucketName: string,
   rootPrefix: string
 ): Promise<{ files: string[]; error: unknown | null }> {
-  const discoveredFiles: string[] = [];
+  const discoveredFilesSet = new Set<string>();
+  const visitedFolders = new Set<string>();
   const foldersToTraverse: string[] = [rootPrefix];
   const MAX_DISCOVERED_FILES = 2000;
   const PAGE_SIZE = 100;
 
   while (foldersToTraverse.length > 0) {
     const currentFolder = foldersToTraverse.shift()!;
+    if (visitedFolders.has(currentFolder)) {
+      continue;
+    }
+    visitedFolders.add(currentFolder);
+
     let offset = 0;
     let hasMore = true;
 
@@ -76,20 +82,30 @@ export async function listAllStorageFiles(
       }
 
       for (const item of (data as StorageFileItem[])) {
-        if (!item.name || item.name === ".emptyFolderPlaceholder") continue;
+        if (!item.name) continue;
 
         const fullPath = currentFolder ? `${currentFolder}/${item.name}` : item.name;
 
-        // In Supabase storage, folders have id === null or metadata === null
-        const isFolder = item.id === null || (item.metadata === null && !item.name.includes("."));
+        // OFFICIAL SUPABASE STORAGE API SPECIFICATION:
+        // In Supabase Storage, folder prefixes returned by list() have id === null or id === undefined.
+        // Actual stored objects (files) always have a valid UUID string in item.id.
+        // We do NOT use filename extensions or metadata heuristics.
+        const isFolder = item.id === null || item.id === undefined;
+
         if (isFolder) {
-          foldersToTraverse.push(fullPath);
+          if (!visitedFolders.has(fullPath) && !foldersToTraverse.includes(fullPath)) {
+            foldersToTraverse.push(fullPath);
+          }
         } else {
-          discoveredFiles.push(fullPath);
-          if (discoveredFiles.length >= MAX_DISCOVERED_FILES) {
+          // It's a genuine file object (with extension, without extension, Unicode, spaces, etc.)
+          discoveredFilesSet.add(fullPath);
+
+          if (discoveredFilesSet.size > MAX_DISCOVERED_FILES) {
             return {
-              files: discoveredFiles,
-              error: new Error(`Storage discovery exceeded maximum limit of ${MAX_DISCOVERED_FILES} files`),
+              files: Array.from(discoveredFilesSet),
+              error: new Error(
+                `Storage discovery exceeded operational limit of ${MAX_DISCOVERED_FILES} files. Account deletion aborted to prevent partial deletion.`
+              ),
             };
           }
         }
@@ -103,7 +119,9 @@ export async function listAllStorageFiles(
     }
   }
 
-  return { files: discoveredFiles, error: null };
+  // Sort files deterministically for consistent batching and verification
+  const sortedFiles = Array.from(discoveredFilesSet).sort();
+  return { files: sortedFiles, error: null };
 }
 
 export async function handleDeleteAccount(

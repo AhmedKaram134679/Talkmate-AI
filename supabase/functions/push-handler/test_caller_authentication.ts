@@ -17,7 +17,7 @@ try {
   Deno.env.set("FIREBASE_SERVICE_ACCOUNT_B64", btoa(serviceAccountJson));
 } catch (_) {}
 
-const { handlePushRequest } = await import("./index.ts");
+const { handlePushRequest, secureCompare } = await import("./index.ts");
 
 const authenticUserId = "11111111-1111-1111-1111-111111111111";
 const otherUserId = "22222222-2222-2222-2222-222222222222";
@@ -304,4 +304,48 @@ Deno.test("Scenario 10: User A attempting to trigger call push for User B's call
   assertEquals(res.status, 403);
   const data = await res.json();
   assert(data.error.includes("Caller does not match call sender"));
+});
+
+// ----------------------------------------------------------------------------
+// Section 7.E Tests: Admin API-Key Header Contract and secureCompare
+// ----------------------------------------------------------------------------
+
+Deno.test("Section 7.E: Alternative header alias x-api-key is rejected without valid user JWT", async () => {
+  // Attempt with 'x-api-key' (legacy alias that is no longer accepted)
+  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
+    method: "POST",
+    headers: {
+      "x-api-key": MOCK_SECRET_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ type: "test" }),
+  });
+
+  const res = await handlePushRequest(req, {
+    secretKey: MOCK_SECRET_KEY,
+    adminClient: createMockAdminClient(),
+  });
+  assertEquals(res.status, 401, "x-api-key alias must not grant administrative access");
+  const data = await res.json();
+  assert(data.error.includes("Missing or invalid authorization header"));
+});
+
+Deno.test("Section 7.E: secureCompare behaves correctly across all input combinations", () => {
+  // Positive matching
+  assertEquals(secureCompare("correct_secret_key", "correct_secret_key"), true);
+  assertEquals(secureCompare("", ""), false); // empty strings rejected as empty credentials
+
+  // Differing lengths (must evaluate constant-time loop without crashing)
+  assertEquals(secureCompare("short", "longer_secret_string"), false);
+  assertEquals(secureCompare("longer_secret_string", "short"), false);
+
+  // Same length, single character difference
+  assertEquals(secureCompare("correct_secret_key_a", "correct_secret_key_b"), false);
+  assertEquals(secureCompare("a_secret_key_test_1", "b_secret_key_test_1"), false);
+
+  // Null, undefined, non-strings
+  assertEquals(secureCompare(null, "secret"), false);
+  assertEquals(secureCompare("secret", null), false);
+  assertEquals(secureCompare(undefined, undefined), false);
+  assertEquals(secureCompare(123 as any, "123"), false);
 });

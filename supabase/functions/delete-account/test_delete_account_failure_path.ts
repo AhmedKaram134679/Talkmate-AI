@@ -1,10 +1,13 @@
 // TalkMate AI - Complete Account Deletion Security & Fail-Closed Unit Test Suite
-// Verifies Section 5 & 6 requirements:
+// Verifies Section 5 & 8 requirements:
 // - Deterministic fail-closed database RPC handling
-// - Paginated and recursive Storage discovery and removal
+// - Storage file/folder classification based on official Supabase Storage API semantics
+// - Recursive traversal: files with/without extensions, multiple dots, spaces, Unicode, empty folders
+// - Safe handling of pagination and duplicate results
+// - Strict operational ceiling of 2000 files (fails closed if exceeded)
+// - Realistic authentication lifecycle: dead JWT rejected with 401 after Auth deletion
+// - Valid retry when Auth deletion failed in run 1
 // - Zero partial deletions: Auth identity is NEVER deleted if DB or Storage fails
-// - Idempotent recovery on Auth 'not found'
-// - Mutual exclusivity of user and admin roles
 
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleDeleteAccount, listAllStorageFiles } from "./index.ts";
@@ -164,10 +167,164 @@ Deno.test("DB Failure: RPC delete_user_account failure fails closed (500) and NE
 });
 
 // ============================================================================
-// 2. STORAGE FAILURE & PAGINATION TESTS
+// 2. STORAGE CLASSIFICATION, PAGINATION & CEILING TESTS (Section 8)
 // ============================================================================
 
-Deno.test("Storage Failure: Storage listing failure fails closed (500) and NEVER calls auth.admin.deleteUser", async () => {
+Deno.test("Storage Classification: Correctly distinguishes files and folders without extension heuristics", async () => {
+  const mockStorage = {
+    from: () => ({
+      list: async (folder: string) => {
+        if (folder === "users/u-1") {
+          return {
+            data: [
+              // Files: must have non-null id
+              { name: "avatar.jpg", id: "uuid-1" },
+              { name: "Makefile", id: "uuid-2" }, // File with NO extension
+              { name: "backup.tar.gz", id: "uuid-3" }, // File with multiple dots
+              { name: "my voice note.m4a", id: "uuid-4" }, // File with spaces
+              { name: "صوتي.mp3", id: "uuid-5" }, // Unicode filename
+              // Folders: have id === null
+              { name: "media_folder", id: null },
+              { name: "my.dot.folder", id: null }, // Folder WITH dot in name
+            ],
+            error: null,
+          };
+        } else if (folder === "users/u-1/media_folder") {
+          return {
+            data: [
+              { name: "clip.mp4", id: "uuid-6" },
+            ],
+            error: null,
+          };
+        } else if (folder === "users/u-1/my.dot.folder") {
+          return {
+            data: [
+              { name: "nested_no_ext", id: "uuid-7" },
+            ],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    }),
+  };
+
+  const { files, error } = await listAllStorageFiles(mockStorage, "talkmate", "users/u-1");
+  assertEquals(error, null);
+  assertEquals(files.length, 7);
+  assert(files.includes("users/u-1/avatar.jpg"));
+  assert(files.includes("users/u-1/Makefile"), "File without extension must be classified as file");
+  assert(files.includes("users/u-1/backup.tar.gz"), "File with multiple dots must be classified as file");
+  assert(files.includes("users/u-1/my voice note.m4a"), "File with spaces must be classified as file");
+  assert(files.includes("users/u-1/صوتي.mp3"), "Unicode file must be classified as file");
+  assert(files.includes("users/u-1/media_folder/clip.mp4"), "Nested folder file must be found");
+  assert(files.includes("users/u-1/my.dot.folder/nested_no_ext"), "Folder with dot in name must be traversed as folder");
+});
+
+Deno.test("Storage Pagination: listAllStorageFiles paginates across multiple pages correctly", async () => {
+  const page1Files = Array.from({ length: 100 }, (_, i) => ({ name: `file_${i}.jpg`, id: `id-${i}` }));
+  const page2Files = Array.from({ length: 50 }, (_, i) => ({ name: `file_${100 + i}.jpg`, id: `id-${100 + i}` }));
+
+  const mockStorage = {
+    from: () => ({
+      list: async (_folder: string, opts: { offset: number; limit: number }) => {
+        if (opts.offset === 0) {
+          return { data: page1Files, error: null };
+        } else if (opts.offset === 100) {
+          return { data: page2Files, error: null };
+        }
+        return { data: [], error: null };
+      },
+    }),
+  };
+
+  const { files, error } = await listAllStorageFiles(mockStorage, "talkmate", "users/test-user");
+  assertEquals(error, null);
+  assertEquals(files.length, 150);
+});
+
+Deno.test("Storage Loops: Repeated pagination and duplicate entries do not cause infinite recursion", async () => {
+  let callCount = 0;
+  const mockStorage = {
+    from: () => ({
+      list: async (folder: string) => {
+        callCount++;
+        if (callCount > 10) {
+          throw new Error("Infinite loop detected!");
+        }
+        if (folder === "users/loop-user") {
+          return {
+            data: [
+              { name: "subfolder", id: null },
+            ],
+            error: null,
+          };
+        } else if (folder === "users/loop-user/subfolder") {
+          return {
+            data: [
+              // Storage backend returning empty or already traversed folder
+              { name: ".emptyFolderPlaceholder", id: null },
+            ],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    }),
+  };
+
+  const { files, error } = await listAllStorageFiles(mockStorage, "talkmate", "users/loop-user");
+  assertEquals(error, null);
+  assertEquals(files.length, 0);
+  assert(callCount <= 3, "Traversal must terminate promptly without looping");
+});
+
+Deno.test("Storage Ceiling: Exactly 2000 files succeeds; >2000 files fails closed", async () => {
+  // 1. Exactly 2000 files
+  const mock2000 = {
+    from: () => ({
+      list: async (_folder: string, opts: { offset: number }) => {
+        if (opts.offset < 2000) {
+          const batch = Array.from({ length: 100 }, (_, i) => ({
+            name: `file_${opts.offset + i}.jpg`,
+            id: `id-${opts.offset + i}`,
+          }));
+          return { data: batch, error: null };
+        }
+        return { data: [], error: null };
+      },
+    }),
+  };
+
+  const res2000 = await listAllStorageFiles(mock2000, "talkmate", "users/u-2000");
+  assertEquals(res2000.error, null);
+  assertEquals(res2000.files.length, 2000);
+
+  // 2. 2001 files (exceeds operational ceiling)
+  const mock2001 = {
+    from: () => ({
+      list: async (_folder: string, opts: { offset: number }) => {
+        if (opts.offset <= 2000) {
+          const size = opts.offset === 2000 ? 1 : 100;
+          const batch = Array.from({ length: size }, (_, i) => ({
+            name: `file_${opts.offset + i}.jpg`,
+            id: `id-${opts.offset + i}`,
+          }));
+          return { data: batch, error: null };
+        }
+        return { data: [], error: null };
+      },
+    }),
+  };
+
+  const res2001 = await listAllStorageFiles(mock2001, "talkmate", "users/u-2001");
+  assert(res2001.error !== null);
+  assert(
+    (res2001.error as Error).message.includes("Storage discovery exceeded operational limit of 2000 files")
+  );
+});
+
+Deno.test("Storage Failure in Handler: Nested folder list failure fails closed (500) and aborts Auth deletion", async () => {
   const userId = "44444444-4444-4444-4444-444444444444";
   let authDeleteCalled = false;
 
@@ -184,10 +341,15 @@ Deno.test("Storage Failure: Storage listing failure fails closed (500) and NEVER
   const mockAdminClient = {
     storage: {
       from: () => ({
-        list: async () => ({
-          data: null,
-          error: { message: "Internal storage S3 provider unreachable" },
-        }),
+        list: async (folder: string) => {
+          if (folder.includes("subfolder")) {
+            return { data: null, error: { message: "S3 list failure in nested folder" } };
+          }
+          return {
+            data: [{ name: "subfolder", id: null }],
+            error: null,
+          };
+        },
         remove: async () => ({ data: [], error: null }),
       }),
     },
@@ -219,10 +381,10 @@ Deno.test("Storage Failure: Storage listing failure fails closed (500) and NEVER
   assertEquals(res.status, 500);
   const data = await res.json();
   assert(data.error.includes("Failed to clean up user storage objects. Account deletion aborted."));
-  assertEquals(authDeleteCalled, false, "CRITICAL: auth.admin.deleteUser must NEVER be called when storage list fails");
+  assertEquals(authDeleteCalled, false, "Auth deletion must NEVER be called when nested storage fails");
 });
 
-Deno.test("Storage Failure: Storage removal failure fails closed (500) and NEVER calls auth.admin.deleteUser", async () => {
+Deno.test("Storage Failure in Handler: Removal failure fails closed (500) and aborts Auth deletion", async () => {
   const userId = "55555555-5555-5555-5555-555555555555";
   let authDeleteCalled = false;
 
@@ -240,12 +402,12 @@ Deno.test("Storage Failure: Storage removal failure fails closed (500) and NEVER
     storage: {
       from: () => ({
         list: async () => ({
-          data: [{ name: "avatar.png", id: "f-1" }],
+          data: [{ name: "voice.m4a", id: "uuid-1" }],
           error: null,
         }),
         remove: async () => ({
           data: null,
-          error: { message: "Permission denied on storage remove" },
+          error: { message: "S3 deleteObjects forbidden" },
         }),
       }),
     },
@@ -277,71 +439,14 @@ Deno.test("Storage Failure: Storage removal failure fails closed (500) and NEVER
   assertEquals(res.status, 500);
   const data = await res.json();
   assert(data.error.includes("Failed to clean up user storage objects. Account deletion aborted."));
-  assertEquals(authDeleteCalled, false, "CRITICAL: auth.admin.deleteUser must NEVER be called when storage remove fails");
-});
-
-Deno.test("Storage Unit: listAllStorageFiles paginates across multiple pages correctly", async () => {
-  // Simulate 150 files across 2 pages (page 1: 100 files, page 2: 50 files)
-  const page1Files = Array.from({ length: 100 }, (_, i) => ({ name: `file_${i}.jpg`, id: `id-${i}` }));
-  const page2Files = Array.from({ length: 50 }, (_, i) => ({ name: `file_${100 + i}.jpg`, id: `id-${100 + i}` }));
-
-  const mockStorage = {
-    from: () => ({
-      list: async (_folder: string, opts: { offset: number; limit: number }) => {
-        if (opts.offset === 0) {
-          return { data: page1Files, error: null };
-        } else if (opts.offset === 100) {
-          return { data: page2Files, error: null };
-        }
-        return { data: [], error: null };
-      },
-    }),
-  };
-
-  const { files, error } = await listAllStorageFiles(mockStorage, "talkmate", "users/test-user");
-  assertEquals(error, null);
-  assertEquals(files.length, 150, "Should have discovered exactly 150 files across both pages");
-  assertEquals(files[0], "users/test-user/file_0.jpg");
-  assertEquals(files[149], "users/test-user/file_149.jpg");
-});
-
-Deno.test("Storage Unit: listAllStorageFiles traverses nested folders correctly", async () => {
-  const mockStorage = {
-    from: () => ({
-      list: async (folder: string) => {
-        if (folder === "users/user-123") {
-          return {
-            data: [
-              { name: "root_avatar.png", id: "file-1" },
-              { name: "documents", id: null, metadata: null }, // folder
-            ],
-            error: null,
-          };
-        } else if (folder === "users/user-123/documents") {
-          return {
-            data: [
-              { name: "passport.pdf", id: "file-2" },
-            ],
-            error: null,
-          };
-        }
-        return { data: [], error: null };
-      },
-    }),
-  };
-
-  const { files, error } = await listAllStorageFiles(mockStorage, "talkmate", "users/user-123");
-  assertEquals(error, null);
-  assertEquals(files.length, 2);
-  assert(files.includes("users/user-123/root_avatar.png"));
-  assert(files.includes("users/user-123/documents/passport.pdf"));
+  assertEquals(authDeleteCalled, false, "Auth deletion must NEVER be called when storage removal fails");
 });
 
 // ============================================================================
-// 3. AUTH FAILURE & IDEMPOTENT RECOVERY TESTS
+// 3. AUTH FAILURE & REALISTIC LIFECYCLE TESTS (Section 5)
 // ============================================================================
 
-Deno.test("Auth Failure: GoTrue service error returns 500 error", async () => {
+Deno.test("Auth Failure: GoTrue admin delete failure fails closed (500)", async () => {
   const userId = "66666666-6666-6666-6666-666666666666";
 
   const mockUserClient = {
@@ -391,8 +496,43 @@ Deno.test("Auth Failure: GoTrue service error returns 500 error", async () => {
   assert(data.error.includes("Failed to complete authentication identity deletion"));
 });
 
-Deno.test("Auth Recovery: Idempotent retry when Auth user is already deleted ('not found') succeeds (200)", async () => {
+Deno.test("Real Lifecycle: Subsequent request after Auth identity was deleted is rejected (401)", async () => {
+  // When an account has been deleted from Supabase Auth, subsequent requests with the old JWT
+  // fail authentication in GoTrue (auth.getUser returns null user and 401 error).
+  const mockUserClient = {
+    auth: {
+      getUser: async () => ({
+        data: { user: null },
+        error: { message: "User not found or session revoked", status: 401 },
+      }),
+    },
+  };
+
+  const req = new Request("https://mock.supabase.co/functions/v1/delete-account", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer dead_user_jwt_after_deletion",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+
+  const res = await handleDeleteAccount(req, {
+    ...MOCK_CONFIG,
+    userClient: mockUserClient,
+  });
+
+  assertEquals(res.status, 401, "Dead JWT after account deletion must be rejected with 401");
+  const data = await res.json();
+  assert(data.error.includes("Invalid or expired session"));
+});
+
+Deno.test("Real Lifecycle: Safe retry when run 1 failed at Auth deletion succeeds on retry", async () => {
+  // If run 1 succeeded on DB and Storage, but failed on network to GoTrue admin API:
+  // The Auth identity still exists in GoTrue, so user JWT is STILL VALID!
   const userId = "77777777-7777-7777-7777-777777777777";
+  let rpcCalled = false;
+  let authDeleteCalled = false;
 
   const mockUserClient = {
     auth: {
@@ -401,22 +541,29 @@ Deno.test("Auth Recovery: Idempotent retry when Auth user is already deleted ('n
         error: null,
       }),
     },
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fnName: string) => {
+      assertEquals(fnName, "delete_user_account");
+      rpcCalled = true;
+      // DB cleanup is idempotent (no-op since rows already deleted)
+      return { data: null, error: null };
+    },
   };
 
   const mockAdminClient = {
     storage: {
       from: () => ({
+        // Storage is already clean (0 files found)
         list: async () => ({ data: [], error: null }),
         remove: async () => ({ data: [], error: null }),
       }),
     },
     auth: {
       admin: {
-        deleteUser: async () => ({
-          data: { user: null },
-          error: { message: "User not found", status: 404 },
-        }),
+        deleteUser: async (id: string) => {
+          assertEquals(id, userId);
+          authDeleteCalled = true;
+          return { data: { user: null }, error: null };
+        },
       },
     },
   };
@@ -424,7 +571,7 @@ Deno.test("Auth Recovery: Idempotent retry when Auth user is already deleted ('n
   const req = new Request("https://mock.supabase.co/functions/v1/delete-account", {
     method: "POST",
     headers: {
-      "Authorization": "Bearer valid_user_jwt",
+      "Authorization": "Bearer valid_retry_jwt",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({}),
@@ -439,7 +586,8 @@ Deno.test("Auth Recovery: Idempotent retry when Auth user is already deleted ('n
   assertEquals(res.status, 200);
   const data = await res.json();
   assertEquals(data.success, true);
-  assert(data.message.includes("successfully deleted"));
+  assertEquals(rpcCalled, true);
+  assertEquals(authDeleteCalled, true);
 });
 
 Deno.test("Full Success: Clean end-to-end deletion with Storage files and Auth removal", async () => {
@@ -466,7 +614,7 @@ Deno.test("Full Success: Clean end-to-end deletion with Storage files and Auth r
     storage: {
       from: () => ({
         list: async () => ({
-          data: [{ name: "avatar.jpg", id: "f-1" }],
+          data: [{ name: "avatar.jpg", id: "uuid-1" }],
           error: null,
         }),
         remove: async (paths: string[]) => {

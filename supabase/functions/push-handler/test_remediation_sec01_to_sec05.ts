@@ -4,57 +4,29 @@
 
 import { assertEquals, assertRejects, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
+import { getVerifiedStagingPostgresEnvironment } from "../_shared/test_staging_guard.ts";
 
-function getCredentials() {
-  const allowStaging = Deno.env.get("TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS");
-  if (allowStaging !== "true") {
-    return null;
-  }
-
-  const pass = Deno.env.get("PGPASSWORD") || Deno.env.get("TALKMATE_STAGING_PGPASSWORD");
-  const host = Deno.env.get("PGHOST") || Deno.env.get("TALKMATE_STAGING_PGHOST");
-  const user = Deno.env.get("PGUSER") || Deno.env.get("TALKMATE_STAGING_PGUSER");
-  const port = Number(Deno.env.get("PGPORT") || Deno.env.get("TALKMATE_STAGING_PGPORT") || 5432);
-  const database = Deno.env.get("PGDATABASE") || Deno.env.get("TALKMATE_STAGING_PGDATABASE") || "postgres";
-
-  if (!pass || !host || !user) {
-    return null;
-  }
-
-  return { host, port, user, pass, database };
-}
-
-const creds = getCredentials();
-const sql = creds
+const pgEnv = getVerifiedStagingPostgresEnvironment();
+const sql = pgEnv
   ? postgres({
-      host: creds.host,
-      port: creds.port,
-      user: creds.user,
-      pass: creds.pass,
-      database: creds.database,
-      ssl: { rejectUnauthorized: false },
+      host: pgEnv.host,
+      port: pgEnv.port,
+      user: pgEnv.user,
+      pass: pgEnv.pass,
+      database: pgEnv.database,
+      ssl: "require",
       connect_timeout: 30,
       idle_timeout: 10,
       max: 5,
     })
   : null;
 
-// Warm up DB connection before running test suite if staging credentials exist
-if (sql) {
-  try {
-    await sql`SELECT 1`;
-  } catch (e) {
-    console.warn("Warm-up connection retry:", e);
-    try {
-      await sql`SELECT 1`;
-    } catch (_) {}
-  }
-}
+// Dynamic, isolated test identities generated per test run to prevent clashes or targeting real accounts
+const ALICE_ID = crypto.randomUUID();
+const BOB_ID = crypto.randomUUID();
+const EVE_ID = crypto.randomUUID();
 
-// Real User UUIDs
-const ALICE_ID = "20f672ea-ebc9-49d1-9a8a-acd4fa703b7c";
-const BOB_ID = "4043be4d-3312-4fac-a0db-3b1502a0d572";
-const EVE_ID = "2ae1af25-46ff-417d-b5a0-449bbbc0c1c5";
+const stagingHost = pgEnv ? `${pgEnv.projectRef}.supabase.co` : "staging.supabase.co";
 
 // Helper to execute in simulated PostgREST authenticated context with automatic rollback
 async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
@@ -62,7 +34,7 @@ async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
     await tx`SET LOCAL ROLE authenticated`;
     await tx`SELECT set_config('request.jwt.claim.sub', ${userId}, true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__");
   }).catch((err) => {
@@ -78,7 +50,7 @@ async function asUnauthenticated(callback: (tx: any) => Promise<void>) {
     await tx`SET LOCAL ROLE anon`;
     await tx`SELECT set_config('request.jwt.claim.sub', '', true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'anon', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__");
   }).catch((err) => {
@@ -94,7 +66,7 @@ async function asAuthenticatedNoUid(callback: (tx: any) => Promise<void>) {
     await tx`SET LOCAL ROLE authenticated`;
     await tx`SELECT set_config('request.jwt.claim.sub', '', true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__");
   }).catch((err) => {
@@ -109,7 +81,7 @@ async function asServiceRole(callback: (tx: any) => Promise<void>) {
   await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE service_role`;
     await tx`SELECT set_config('request.jwt.claim.role', 'service_role', true)`;
-    await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
+    await tx`SELECT set_config('request.headers', ${JSON.stringify({ host: stagingHost, authorization: "dummy" })}, true)`;
     await callback(tx);
     throw new Error("__ROLLBACK__");
   }).catch((err) => {

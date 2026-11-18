@@ -798,16 +798,25 @@ interface RoutingLogEntry {
 }
 
 
-function secureCompare(a?: string | null, b?: string | null): boolean {
+export function secureCompare(a?: string | null, b?: string | null): boolean {
   if (!a || !b || typeof a !== "string" || typeof b !== "string") return false;
   const enc = new TextEncoder();
   const aBytes = enc.encode(a);
   const bBytes = enc.encode(b);
-  if (aBytes.length !== bBytes.length) return false;
-  let diff = 0;
-  for (let i = 0; i < aBytes.length; i++) {
-    diff |= aBytes[i] ^ bBytes[i];
+
+  const aLen = aBytes.length;
+  const bLen = bBytes.length;
+  // Initialize diff with length difference bitwise to avoid early return while tracking mismatch
+  let diff = aLen ^ bLen;
+  const maxLen = Math.max(aLen, bLen);
+
+  // Iterate over maxLen in constant time without branching or early termination
+  for (let i = 0; i < maxLen; i++) {
+    const byteA = i < aLen ? aBytes[i] : 0;
+    const byteB = i < bLen ? bBytes[i] : 0;
+    diff |= byteA ^ byteB;
   }
+
   return diff === 0;
 }
 
@@ -824,7 +833,8 @@ export async function handlePushRequest(
   const activeAdminClient = overrides?.adminClient || supabaseAdmin;
 
   // STRICT CALLER AUTHENTICATION & AUTHORIZATION
-  const apiKeyHeader = req.headers.get("apikey") || req.headers.get("apiKey") || req.headers.get("x-api-key");
+  // Official Supabase API-key header contract only; no non-standard aliases accepted.
+  const apiKeyHeader = req.headers.get("apikey");
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
 
   const bearerToken = authHeader && authHeader.startsWith("Bearer ")
