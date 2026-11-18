@@ -176,5 +176,23 @@ void main() {
       final emailResults = await mockUserRepo.searchByNameOrEmail('@talkmate');
       expect(emailResults.length, 2);
     });
+
+    test('deleteAccount failure rethrows exception and preserves session state', () async {
+      authController.setMockUser('user_retain_id', 'Test User', 'test@talkmate.ai');
+      expect(authController.isLoggedIn, true);
+      expect(authController.userId, 'user_retain_id');
+
+      // Attempting deletion without live Supabase fails and rethrows
+      await expectLater(
+        authController.deleteAccount(password: 'dummy_pwd'),
+        throwsA(anything),
+      );
+
+      // Session state must NOT be wiped when deletion fails
+      expect(authController.isLoggedIn, true);
+      expect(authController.userId, 'user_retain_id');
+      expect(authController.userEmail, 'test@talkmate.ai');
+      expect(authController.isLoading, false);
+    });
   });
 }

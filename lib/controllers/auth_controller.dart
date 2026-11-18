@@ -429,14 +429,7 @@ class AuthController extends GetxController {
         }
       } catch (e) {
         debugPrint('deleteAccount: server deletion failed: $e');
-        Get.snackbar(
-          'خطأ في حذف الحساب',
-          e.toString().replaceAll('Exception: ', ''),
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
-        return;
+        rethrow;
       }
 
       // Clear local caches and state only upon successful deletion

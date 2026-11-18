@@ -1,26 +1,37 @@
 // TalkMate AI - Edge Function Caller Authentication & Identity Boundary Unit Tests
 // Verifies Section 3.A.4 matrix: Mutual exclusivity of Secret Key admin path and User JWT path.
 
-import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
 
-const MOCK_SECRET_KEY = "mock_secret_key_test_1234567890";
-const MOCK_PUBLISHABLE_KEY = "mock_publishable_key_test_abcdef";
+const MOCK_SECRET_KEY = 'mock_secret_key_test_1234567890';
+const MOCK_PUBLISHABLE_KEY = 'mock_publishable_key_test_abcdef';
 
 // Set required module-level environment variables before importing push-handler
-Deno.env.set("SUPABASE_URL", "https://mock.supabase.co");
-Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: MOCK_SECRET_KEY }));
-Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: MOCK_PUBLISHABLE_KEY }));
+Deno.env.set('SUPABASE_URL', 'https://mock.supabase.co');
+Deno.env.set(
+  'SUPABASE_SECRET_KEYS',
+  JSON.stringify({ default: MOCK_SECRET_KEY }),
+);
+Deno.env.set(
+  'SUPABASE_PUBLISHABLE_KEYS',
+  JSON.stringify({ default: MOCK_PUBLISHABLE_KEY }),
+);
 
 // Load valid local test service account
 try {
-  const serviceAccountJson = Deno.readTextFileSync(new URL("./service-account.json", import.meta.url));
-  Deno.env.set("FIREBASE_SERVICE_ACCOUNT_B64", btoa(serviceAccountJson));
+  const serviceAccountJson = Deno.readTextFileSync(
+    new URL('./service-account.json', import.meta.url),
+  );
+  Deno.env.set('FIREBASE_SERVICE_ACCOUNT_B64', btoa(serviceAccountJson));
 } catch (_) {}
 
-const { handlePushRequest, secureCompare } = await import("./index.ts");
+const { handlePushRequest, secureCompare } = await import('./index.ts');
 
-const authenticUserId = "11111111-1111-1111-1111-111111111111";
-const otherUserId = "22222222-2222-2222-2222-222222222222";
+const authenticUserId = '11111111-1111-1111-1111-111111111111';
+const otherUserId = '22222222-2222-2222-2222-222222222222';
 
 function createMockAdminClient(opts?: {
   validUserJwt?: string;
@@ -36,8 +47,8 @@ function createMockAdminClient(opts?: {
             data: {
               user: {
                 id: authenticUserId,
-                email: "user@test.com",
-                role: opts.userRole || "authenticated",
+                email: 'user@test.com',
+                role: opts.userRole || 'authenticated',
               },
             },
             error: null,
@@ -46,23 +57,26 @@ function createMockAdminClient(opts?: {
         if (opts?.expiredUserJwt && token === opts.expiredUserJwt) {
           return {
             data: { user: null },
-            error: { message: "Token expired", status: 401 },
+            error: { message: 'Token expired', status: 401 },
           };
         }
         return {
           data: { user: null },
-          error: { message: "Invalid JWT token", status: 401 },
+          error: { message: 'Invalid JWT token', status: 401 },
         };
       },
     },
     from: (table: string) => {
-      if (table === "calls" && opts?.callsMock) {
+      if (table === 'calls' && opts?.callsMock) {
         return opts.callsMock;
       }
       return {
         select: () => ({
           eq: () => ({
-            single: async () => ({ data: null, error: { message: "Not found" } }),
+            single: async () => ({
+              data: null,
+              error: { message: 'Not found' },
+            }),
           }),
         }),
       };
@@ -70,15 +84,18 @@ function createMockAdminClient(opts?: {
   };
 }
 
-Deno.test("Scenario 1: Valid Secret Key in apikey (no bearer token) succeeds as administrative caller", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_SECRET_KEY,
-      "Content-Type": "application/json",
+Deno.test('Scenario 1: Valid Secret Key in apikey (no bearer token) succeeds as administrative caller', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_SECRET_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -86,18 +103,24 @@ Deno.test("Scenario 1: Valid Secret Key in apikey (no bearer token) succeeds as 
   });
 
   // Administrative caller reaches handler body; status is not 401
-  assert(res.status !== 401, `Expected admin authorization, received: ${res.status}`);
+  assert(
+    res.status !== 401,
+    `Expected admin authorization, received: ${res.status}`,
+  );
 });
 
-Deno.test("Scenario 2: Invalid Secret Key in apikey is rejected (401)", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": "wrong_invalid_secret_key",
-      "Content-Type": "application/json",
+Deno.test('Scenario 2: Invalid Secret Key in apikey is rejected (401)', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': 'wrong_invalid_secret_key',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -107,19 +130,24 @@ Deno.test("Scenario 2: Invalid Secret Key in apikey is rejected (401)", async ()
   assertEquals(res.status, 401);
   const data = await res.json();
   assert(
-    data.error.toLowerCase().includes("invalid api key") ||
-    data.error.toLowerCase().includes("missing or invalid authorization header")
+    data.error.toLowerCase().includes('invalid api key') ||
+      data.error.toLowerCase().includes(
+        'missing or invalid authorization header',
+      ),
   );
 });
 
-Deno.test("Scenario 3: Missing apikey and missing bearer token is rejected (401)", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+Deno.test('Scenario 3: Missing apikey and missing bearer token is rejected (401)', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -129,20 +157,25 @@ Deno.test("Scenario 3: Missing apikey and missing bearer token is rejected (401)
   assertEquals(res.status, 401);
   const data = await res.json();
   assert(
-    data.error.toLowerCase().includes("invalid api key") ||
-    data.error.toLowerCase().includes("missing or invalid authorization header")
+    data.error.toLowerCase().includes('invalid api key') ||
+      data.error.toLowerCase().includes(
+        'missing or invalid authorization header',
+      ),
   );
 });
 
-Deno.test("Scenario 4: Publishable Key without valid user JWT is rejected (401)", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Content-Type": "application/json",
+Deno.test('Scenario 4: Publishable Key without valid user JWT is rejected (401)', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -152,22 +185,27 @@ Deno.test("Scenario 4: Publishable Key without valid user JWT is rejected (401)"
   assertEquals(res.status, 401);
   const data = await res.json();
   assert(
-    data.error.toLowerCase().includes("invalid api key") ||
-    data.error.toLowerCase().includes("missing or invalid authorization header")
+    data.error.toLowerCase().includes('invalid api key') ||
+      data.error.toLowerCase().includes(
+        'missing or invalid authorization header',
+      ),
   );
 });
 
-Deno.test("Scenario 5: Publishable Key with valid user JWT succeeds user authentication", async () => {
-  const validJwt = "valid_user_jwt_token_12345";
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Authorization": `Bearer ${validJwt}`,
-      "Content-Type": "application/json",
+Deno.test('Scenario 5: Publishable Key with valid user JWT succeeds user authentication', async () => {
+  const validJwt = 'valid_user_jwt_token_12345';
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${validJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -175,19 +213,25 @@ Deno.test("Scenario 5: Publishable Key with valid user JWT succeeds user authent
   });
 
   // User was authenticated; status is not 401 Unauthorized
-  assert(res.status !== 401, `Expected user authorization, received: ${res.status}`);
+  assert(
+    res.status !== 401,
+    `Expected user authorization, received: ${res.status}`,
+  );
 });
 
-Deno.test("Scenario 6: Invalid user JWT is rejected (401)", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Authorization": "Bearer invalid_malformed_jwt_token",
-      "Content-Type": "application/json",
+Deno.test('Scenario 6: Invalid user JWT is rejected (401)', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Authorization': 'Bearer invalid_malformed_jwt_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -196,20 +240,23 @@ Deno.test("Scenario 6: Invalid user JWT is rejected (401)", async () => {
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assert(data.error.includes("Invalid JWT token"));
+  assert(data.error.includes('Invalid JWT token'));
 });
 
-Deno.test("Scenario 7: Expired user JWT is rejected (401)", async () => {
-  const expiredJwt = "expired_user_jwt_token_99999";
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Authorization": `Bearer ${expiredJwt}`,
-      "Content-Type": "application/json",
+Deno.test('Scenario 7: Expired user JWT is rejected (401)', async () => {
+  const expiredJwt = 'expired_user_jwt_token_99999';
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${expiredJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -218,18 +265,21 @@ Deno.test("Scenario 7: Expired user JWT is rejected (401)", async () => {
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assert(data.error.includes("Invalid JWT token"));
+  assert(data.error.includes('Invalid JWT token'));
 });
 
-Deno.test("Scenario 8: Secret Key supplied only as Bearer token is rejected (401)", async () => {
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${MOCK_SECRET_KEY}`,
-      "Content-Type": "application/json",
+Deno.test('Scenario 8: Secret Key supplied only as Bearer token is rejected (401)', async () => {
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${MOCK_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -239,26 +289,31 @@ Deno.test("Scenario 8: Secret Key supplied only as Bearer token is rejected (401
   assertEquals(res.status, 401);
   const data = await res.json();
   assert(
-    data.error.includes("Secret key must be supplied via apikey header, not Bearer token"),
-    `Expected specific rejection message, received: ${data.error}`
+    data.error.includes(
+      'Secret key must be supplied via apikey header, not Bearer token',
+    ),
+    `Expected specific rejection message, received: ${data.error}`,
   );
 });
 
-Deno.test("Scenario 9: Authenticated user attempting call push without call record is rejected (403)", async () => {
-  const validJwt = "valid_user_jwt_token_12345";
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Authorization": `Bearer ${validJwt}`,
-      "Content-Type": "application/json",
+Deno.test('Scenario 9: Authenticated user attempting call push without call record is rejected (403)', async () => {
+  const validJwt = 'valid_user_jwt_token_12345';
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${validJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'call_ringing',
+        receiver_id: otherUserId,
+        // Missing call_id
+      }),
     },
-    body: JSON.stringify({
-      type: "call_ringing",
-      receiver_id: otherUserId,
-      // Missing call_id
-    }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -267,20 +322,20 @@ Deno.test("Scenario 9: Authenticated user attempting call push without call reco
 
   assertEquals(res.status, 403);
   const data = await res.json();
-  assert(data.error.includes("Missing call record identifier"));
+  assert(data.error.includes('Missing call record identifier'));
 });
 
 Deno.test("Scenario 10: User A attempting to trigger call push for User B's call is rejected (403)", async () => {
-  const validJwt = "valid_user_jwt_token_12345";
+  const validJwt = 'valid_user_jwt_token_12345';
   const mockCalls = {
     select: () => ({
       eq: () => ({
         single: async () => ({
           data: {
-            id: "call-999",
+            id: 'call-999',
             sender_id: otherUserId, // Call belongs to someone else (User B)
-            receiver_id: "33333333-3333-3333-3333-333333333333",
-            status: "ringing",
+            receiver_id: '33333333-3333-3333-3333-333333333333',
+            status: 'ringing',
           },
           error: null,
         }),
@@ -288,19 +343,22 @@ Deno.test("Scenario 10: User A attempting to trigger call push for User B's call
     }),
   };
 
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": MOCK_PUBLISHABLE_KEY,
-      "Authorization": `Bearer ${validJwt}`,
-      "Content-Type": "application/json",
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': MOCK_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${validJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'call_ringing',
+        call_id: 'call-999',
+        receiver_id: '33333333-3333-3333-3333-333333333333',
+      }),
     },
-    body: JSON.stringify({
-      type: "call_ringing",
-      call_id: "call-999",
-      receiver_id: "33333333-3333-3333-3333-333333333333",
-    }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -312,24 +370,27 @@ Deno.test("Scenario 10: User A attempting to trigger call push for User B's call
 
   assertEquals(res.status, 403);
   const data = await res.json();
-  assert(data.error.includes("Caller does not match call sender"));
+  assert(data.error.includes('Caller does not match call sender'));
 });
 
 // ----------------------------------------------------------------------------
 // Section 7.E Tests: Admin API-Key Header Contract and secureCompare
 // ----------------------------------------------------------------------------
 
-Deno.test("Scenario 11: Invalid apikey with valid user JWT is strictly REJECTED (401) to prevent silent credential downgrade", async () => {
-  const validJwt = "valid_user_jwt_token_12345";
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "apikey": "invalid_or_expired_secret_key_999",
-      "Authorization": `Bearer ${validJwt}`,
-      "Content-Type": "application/json",
+Deno.test('Scenario 11: Invalid apikey with valid user JWT is strictly REJECTED (401) to prevent silent credential downgrade', async () => {
+  const validJwt = 'valid_user_jwt_token_12345';
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'apikey': 'invalid_or_expired_secret_key_999',
+        'Authorization': `Bearer ${validJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'ping' }),
     },
-    body: JSON.stringify({ type: "ping" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
@@ -337,48 +398,65 @@ Deno.test("Scenario 11: Invalid apikey with valid user JWT is strictly REJECTED 
     adminClient: createMockAdminClient({ validUserJwt: validJwt }),
   });
 
-  assertEquals(res.status, 401, "Invalid API key with user JWT must not silently downgrade to user role");
+  assertEquals(
+    res.status,
+    401,
+    'Invalid API key with user JWT must not silently downgrade to user role',
+  );
   const data = await res.json();
-  assert(data.error.includes("Invalid API key"));
+  assert(data.error.includes('Invalid API key'));
 });
 
-Deno.test("Section 7.E: Alternative header alias x-api-key is rejected without valid user JWT", async () => {
+Deno.test('Section 7.E: Alternative header alias x-api-key is rejected without valid user JWT', async () => {
   // Attempt with 'x-api-key' (legacy alias that is no longer accepted)
-  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
-    method: "POST",
-    headers: {
-      "x-api-key": MOCK_SECRET_KEY,
-      "Content-Type": "application/json",
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/push-handler',
+    {
+      method: 'POST',
+      headers: {
+        'x-api-key': MOCK_SECRET_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'test' }),
     },
-    body: JSON.stringify({ type: "test" }),
-  });
+  );
 
   const res = await handlePushRequest(req, {
     secretKey: MOCK_SECRET_KEY,
     adminClient: createMockAdminClient(),
   });
-  assertEquals(res.status, 401, "x-api-key alias must not grant administrative access");
+  assertEquals(
+    res.status,
+    401,
+    'x-api-key alias must not grant administrative access',
+  );
   const data = await res.json();
-  assert(data.error.includes("Missing or invalid authorization header"));
+  assert(data.error.includes('Missing or invalid authorization header'));
 });
 
-Deno.test("Section 7.E: secureCompare behaves correctly across all input combinations", () => {
+Deno.test('Section 7.E: secureCompare behaves correctly across all input combinations', () => {
   // Positive matching
-  assertEquals(secureCompare("correct_secret_key", "correct_secret_key"), true);
-  assertEquals(secureCompare("", ""), false); // empty strings rejected as empty credentials
+  assertEquals(secureCompare('correct_secret_key', 'correct_secret_key'), true);
+  assertEquals(secureCompare('', ''), false); // empty strings rejected as empty credentials
 
   // Differing lengths (must evaluate constant-time loop without crashing)
-  assertEquals(secureCompare("short", "longer_secret_string"), false);
-  assertEquals(secureCompare("longer_secret_string", "short"), false);
+  assertEquals(secureCompare('short', 'longer_secret_string'), false);
+  assertEquals(secureCompare('longer_secret_string', 'short'), false);
 
   // Same length, single character difference
-  assertEquals(secureCompare("correct_secret_key_a", "correct_secret_key_b"), false);
-  assertEquals(secureCompare("a_secret_key_test_1", "b_secret_key_test_1"), false);
+  assertEquals(
+    secureCompare('correct_secret_key_a', 'correct_secret_key_b'),
+    false,
+  );
+  assertEquals(
+    secureCompare('a_secret_key_test_1', 'b_secret_key_test_1'),
+    false,
+  );
 
   // Unicode, multibyte UTF-8, and non-ASCII inputs
-  assertEquals(secureCompare("مفتاح_سري_آمن_١٢٣", "مفتاح_سري_آمن_١٢٣"), true);
-  assertEquals(secureCompare("مفتاح_سري_آمن_١٢٣", "مفتاح_سري_آمن_١٢٤"), false);
-  assertEquals(secureCompare("secret_key_🔐", "secret_key_🔐"), true);
-  assertEquals(secureCompare("secret_key_🔐", "secret_key_🔓"), false);
-  assertEquals(secureCompare("مفتاح", "مفتاح_طويل_جدا"), false);
+  assertEquals(secureCompare('مفتاح_سري_آمن_١٢٣', 'مفتاح_سري_آمن_١٢٣'), true);
+  assertEquals(secureCompare('مفتاح_سري_آمن_١٢٣', 'مفتاح_سري_آمن_١٢٤'), false);
+  assertEquals(secureCompare('secret_key_🔐', 'secret_key_🔐'), true);
+  assertEquals(secureCompare('secret_key_🔐', 'secret_key_🔓'), false);
+  assertEquals(secureCompare('مفتاح', 'مفتاح_طويل_جدا'), false);
 });
