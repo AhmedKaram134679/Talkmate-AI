@@ -168,11 +168,19 @@ if (!supabaseUrl || supabaseUrl.trim().length === 0) {
 }
 
 let secretKey = "";
+let publishableKey = "";
 try {
   secretKey = parseRequiredKey("SUPABASE_SECRET_KEYS");
 } catch (err) {
   StructuredLogger.error("CONFIG_ERROR", err instanceof Error ? err.message : "Secret key configuration failed");
   throw new Error("Failed to initialize Supabase secret key configuration");
+}
+
+try {
+  publishableKey = parseRequiredKey("SUPABASE_PUBLISHABLE_KEYS");
+} catch (_err) {
+  // Graceful fallback for environments providing plain key string
+  publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
 }
 
 // Admin client to bypass RLS using the validated Secret key
@@ -825,11 +833,13 @@ export async function handlePushRequest(
   overrides?: {
     adminClient?: any;
     secretKey?: string;
+    publishableKey?: string;
   }
 ): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
   const activeSecretKey = overrides?.secretKey || secretKey;
+  const activePublishableKey = overrides?.publishableKey || publishableKey;
   const activeAdminClient = overrides?.adminClient || supabaseAdmin;
 
   // STRICT CALLER AUTHENTICATION & AUTHORIZATION
@@ -857,11 +867,26 @@ export async function handlePushRequest(
   // PATH 1: Administrative Server-to-Server Authentication
   // Secret Key must be supplied through the apikey header and match server-side secretKey via secure comparison.
   const isSecretInApiKey = Boolean(apiKeyHeader && secureCompare(apiKeyHeader.trim(), activeSecretKey));
+  const isPublishableInApiKey = Boolean(
+    apiKeyHeader &&
+    activePublishableKey &&
+    secureCompare(apiKeyHeader.trim(), activePublishableKey)
+  );
 
   if (isSecretInApiKey) {
     callerRole = "service_role";
     callerUserId = null;
   } else {
+    // If an apikey header was provided, but matches neither the Secret Key nor the Publishable Key,
+    // reject immediately with 401. An invalid administrative credential must NEVER silently downgrade.
+    if (apiKeyHeader && !isPublishableInApiKey) {
+      StructuredLogger.security("Unauthorized push-handler request: Invalid apikey header");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Invalid API key" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // PATH 2: Authenticated User Path
     // Requires a real user access JWT in Authorization: Bearer <jwt>
     // Neither Publishable Key nor Secret Key alone can authenticate a user.
@@ -981,7 +1006,7 @@ export async function handlePushRequest(
         }
 
         // Query trusted room record from database
-        const { data: roomRecord, error: roomError } = await supabaseAdmin
+        const { data: roomRecord, error: roomError } = await activeAdminClient
           .from("rooms")
           .select("id, name, created_by, is_private, allowed_users")
           .eq("id", roomId)
@@ -1023,7 +1048,7 @@ export async function handlePushRequest(
         }
 
         // Query trusted message record from database
-        const { data: messageRecord, error: msgError } = await supabaseAdmin
+        const { data: messageRecord, error: msgError } = await activeAdminClient
           .from("messages")
           .select("id, sender_id, chat_id, text, type")
           .eq("id", message_id)

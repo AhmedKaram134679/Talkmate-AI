@@ -4,6 +4,8 @@
 
 import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  canRunStagingTests,
+  assertStagingEnvironment,
   getVerifiedStagingEnvironment,
   getVerifiedStagingPostgresEnvironment,
 } from "./test_staging_guard.ts";
@@ -410,6 +412,186 @@ Deno.test("Staging Postgres Guard: Valid direct staging db host succeeds", () =>
       assertEquals(pgEnv?.port, 5432);
       assertEquals(pgEnv?.user, "postgres");
       assertEquals(pgEnv?.pass, "staging_db_secret");
+    }
+  );
+});
+
+Deno.test("Staging Guard: URL with path segments, queries, or fragments is rejected", () => {
+  // Path segment
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "staging-ref",
+      TALKMATE_STAGING_SUPABASE_URL: "https://staging-ref.supabase.co/extra/path",
+      TALKMATE_STAGING_SUPABASE_PUBLISHABLE_KEY: "mock_pub",
+      TALKMATE_STAGING_SUPABASE_SECRET_KEY: "mock_sec",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingEnvironment(),
+        Error,
+        "must not contain path segments"
+      );
+    }
+  );
+
+  // Query parameter
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "staging-ref",
+      TALKMATE_STAGING_SUPABASE_URL: "https://staging-ref.supabase.co?token=leak",
+      TALKMATE_STAGING_SUPABASE_PUBLISHABLE_KEY: "mock_pub",
+      TALKMATE_STAGING_SUPABASE_SECRET_KEY: "mock_sec",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingEnvironment(),
+        Error,
+        "must not contain query parameters"
+      );
+    }
+  );
+
+  // URL fragment
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "staging-ref",
+      TALKMATE_STAGING_SUPABASE_URL: "https://staging-ref.supabase.co#fragment",
+      TALKMATE_STAGING_SUPABASE_PUBLISHABLE_KEY: "mock_pub",
+      TALKMATE_STAGING_SUPABASE_SECRET_KEY: "mock_sec",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingEnvironment(),
+        Error,
+        "must not contain URL fragments"
+      );
+    }
+  );
+});
+
+Deno.test("Staging Postgres Guard: Pooler host requires valid project user and allowed port", () => {
+  // Valid pooler host and user on transaction port 6543
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_PGHOST: "aws-0-eu-central-1.pooler.supabase.com",
+      TALKMATE_STAGING_PGUSER: "postgres.my-staging",
+      TALKMATE_STAGING_PGPASSWORD: "secret_pooler_pass",
+      TALKMATE_STAGING_PGPORT: "6543",
+      TALKMATE_STAGING_PGDATABASE: "postgres",
+    },
+    () => {
+      const pgEnv = getVerifiedStagingPostgresEnvironment();
+      assertEquals(pgEnv?.host, "aws-0-eu-central-1.pooler.supabase.com");
+      assertEquals(pgEnv?.port, 6543);
+      assertEquals(pgEnv?.user, "postgres.my-staging");
+    }
+  );
+
+  // Pooler host with user not matching project reference is rejected
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_PGHOST: "aws-0-eu-central-1.pooler.supabase.com",
+      TALKMATE_STAGING_PGUSER: "postgres.wrong-project-ref",
+      TALKMATE_STAGING_PGPASSWORD: "secret_pooler_pass",
+      TALKMATE_STAGING_PGPORT: "6543",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingPostgresEnvironment(),
+        Error,
+        "does not belong to staging project"
+      );
+    }
+  );
+
+  // Pooler host with invalid port (e.g. 8080) is rejected
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_PGHOST: "aws-0-eu-central-1.pooler.supabase.com",
+      TALKMATE_STAGING_PGUSER: "postgres.my-staging",
+      TALKMATE_STAGING_PGPASSWORD: "secret_pooler_pass",
+      TALKMATE_STAGING_PGPORT: "8080",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingPostgresEnvironment(),
+        Error,
+        "must use port 5432 or 6543"
+      );
+    }
+  );
+
+  // Pooler host with user matching production project ref is rejected
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_PGHOST: "aws-0-eu-central-1.pooler.supabase.com",
+      TALKMATE_STAGING_PGUSER: "postgres.icdbbfsjbslzctshxytd",
+      TALKMATE_STAGING_PGPASSWORD: "secret_pooler_pass",
+      TALKMATE_STAGING_PGPORT: "6543",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingPostgresEnvironment(),
+        Error,
+        "matches production project reference"
+      );
+    }
+  );
+
+  // Direct db with port other than 5432 is rejected
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_PGHOST: "db.my-staging.supabase.co",
+      TALKMATE_STAGING_PGUSER: "postgres",
+      TALKMATE_STAGING_PGPASSWORD: "secret_pass",
+      TALKMATE_STAGING_PGPORT: "5433",
+    },
+    () => {
+      assertThrows(
+        () => getVerifiedStagingPostgresEnvironment(),
+        Error,
+        "must use port 5432"
+      );
+    }
+  );
+});
+
+Deno.test("Staging Guard: canRunStagingTests and assertStagingEnvironment helpers operate correctly", () => {
+  withEnv({ TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: undefined }, () => {
+    assertEquals(canRunStagingTests(), false);
+    assertThrows(
+      () => assertStagingEnvironment("suite-A"),
+      Error,
+      "without TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS=\"true\""
+    );
+  });
+
+  withEnv(
+    {
+      TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS: "true",
+      TALKMATE_STAGING_PROJECT_REF: "my-staging",
+      TALKMATE_STAGING_SUPABASE_URL: "https://my-staging.supabase.co",
+      TALKMATE_STAGING_SUPABASE_PUBLISHABLE_KEY: "mock_pub",
+      TALKMATE_STAGING_SUPABASE_SECRET_KEY: "mock_sec",
+    },
+    () => {
+      assertEquals(canRunStagingTests(), true);
+      const env = assertStagingEnvironment("suite-B");
+      assertEquals(env.projectRef, "my-staging");
+      assertEquals(env.supabaseUrl, "https://my-staging.supabase.co");
     }
   );
 });

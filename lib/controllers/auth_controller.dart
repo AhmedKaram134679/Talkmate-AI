@@ -421,15 +421,25 @@ class AuthController extends GetxController {
           'delete-account',
         );
         if (res.status != 200) {
-          // Fail-safe fallback to direct RPC database cleanup if function returned non-200
-          await Supabase.instance.client.rpc('delete_user_account');
+          final dynamic data = res.data;
+          final String errMsg = data is Map && data['error'] != null
+              ? data['error'].toString()
+              : 'فشل حذف الحساب من الخادم';
+          throw Exception(errMsg);
         }
-      } catch (_) {
-        // Fail-safe fallback to direct RPC database cleanup
-        await Supabase.instance.client.rpc('delete_user_account');
+      } catch (e) {
+        debugPrint('deleteAccount: server deletion failed: $e');
+        Get.snackbar(
+          'خطأ في حذف الحساب',
+          e.toString().replaceAll('Exception: ', ''),
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
       }
 
-      // Clear local caches and state
+      // Clear local caches and state only upon successful deletion
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
 

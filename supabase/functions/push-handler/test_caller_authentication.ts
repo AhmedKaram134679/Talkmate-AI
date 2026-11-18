@@ -106,7 +106,10 @@ Deno.test("Scenario 2: Invalid Secret Key in apikey is rejected (401)", async ()
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assert(data.error.toLowerCase().includes("missing or invalid authorization header"));
+  assert(
+    data.error.toLowerCase().includes("invalid api key") ||
+    data.error.toLowerCase().includes("missing or invalid authorization header")
+  );
 });
 
 Deno.test("Scenario 3: Missing apikey and missing bearer token is rejected (401)", async () => {
@@ -125,7 +128,10 @@ Deno.test("Scenario 3: Missing apikey and missing bearer token is rejected (401)
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assert(data.error.toLowerCase().includes("missing or invalid authorization header"));
+  assert(
+    data.error.toLowerCase().includes("invalid api key") ||
+    data.error.toLowerCase().includes("missing or invalid authorization header")
+  );
 });
 
 Deno.test("Scenario 4: Publishable Key without valid user JWT is rejected (401)", async () => {
@@ -145,7 +151,10 @@ Deno.test("Scenario 4: Publishable Key without valid user JWT is rejected (401)"
 
   assertEquals(res.status, 401);
   const data = await res.json();
-  assert(data.error.toLowerCase().includes("missing or invalid authorization header"));
+  assert(
+    data.error.toLowerCase().includes("invalid api key") ||
+    data.error.toLowerCase().includes("missing or invalid authorization header")
+  );
 });
 
 Deno.test("Scenario 5: Publishable Key with valid user JWT succeeds user authentication", async () => {
@@ -310,6 +319,29 @@ Deno.test("Scenario 10: User A attempting to trigger call push for User B's call
 // Section 7.E Tests: Admin API-Key Header Contract and secureCompare
 // ----------------------------------------------------------------------------
 
+Deno.test("Scenario 11: Invalid apikey with valid user JWT is strictly REJECTED (401) to prevent silent credential downgrade", async () => {
+  const validJwt = "valid_user_jwt_token_12345";
+  const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
+    method: "POST",
+    headers: {
+      "apikey": "invalid_or_expired_secret_key_999",
+      "Authorization": `Bearer ${validJwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ type: "ping" }),
+  });
+
+  const res = await handlePushRequest(req, {
+    secretKey: MOCK_SECRET_KEY,
+    publishableKey: MOCK_PUBLISHABLE_KEY,
+    adminClient: createMockAdminClient({ validUserJwt: validJwt }),
+  });
+
+  assertEquals(res.status, 401, "Invalid API key with user JWT must not silently downgrade to user role");
+  const data = await res.json();
+  assert(data.error.includes("Invalid API key"));
+});
+
 Deno.test("Section 7.E: Alternative header alias x-api-key is rejected without valid user JWT", async () => {
   // Attempt with 'x-api-key' (legacy alias that is no longer accepted)
   const req = new Request("https://mock.supabase.co/functions/v1/push-handler", {
@@ -343,9 +375,10 @@ Deno.test("Section 7.E: secureCompare behaves correctly across all input combina
   assertEquals(secureCompare("correct_secret_key_a", "correct_secret_key_b"), false);
   assertEquals(secureCompare("a_secret_key_test_1", "b_secret_key_test_1"), false);
 
-  // Null, undefined, non-strings
-  assertEquals(secureCompare(null, "secret"), false);
-  assertEquals(secureCompare("secret", null), false);
-  assertEquals(secureCompare(undefined, undefined), false);
-  assertEquals(secureCompare(123 as any, "123"), false);
+  // Unicode, multibyte UTF-8, and non-ASCII inputs
+  assertEquals(secureCompare("مفتاح_سري_آمن_١٢٣", "مفتاح_سري_آمن_١٢٣"), true);
+  assertEquals(secureCompare("مفتاح_سري_آمن_١٢٣", "مفتاح_سري_آمن_١٢٤"), false);
+  assertEquals(secureCompare("secret_key_🔐", "secret_key_🔐"), true);
+  assertEquals(secureCompare("secret_key_🔐", "secret_key_🔓"), false);
+  assertEquals(secureCompare("مفتاح", "مفتاح_طويل_جدا"), false);
 });

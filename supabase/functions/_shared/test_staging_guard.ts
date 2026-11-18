@@ -38,6 +38,26 @@ export interface StagingPostgresEnvironment {
 const FORBIDDEN_PRODUCTION_PROJECT_REF = "icdbbfsjbslzctshxytd";
 
 /**
+ * Checks whether staging integration tests are explicitly allowed.
+ */
+export function canRunStagingTests(): boolean {
+  return Deno.env.get("TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS") === "true";
+}
+
+/**
+ * Asserts that the staging environment is configured and verified, throwing an error if not.
+ */
+export function assertStagingEnvironment(suiteName?: string): StagingTestEnvironment {
+  const env = getVerifiedStagingEnvironment();
+  if (!env) {
+    throw new Error(
+      `Staging test suite '${suiteName || "unspecified"}' attempted execution without TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS="true".`
+    );
+  }
+  return env;
+}
+
+/**
  * Validates and returns the HTTPS staging Supabase environment.
  * Returns null if TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS is not "true".
  * Throws strict descriptive errors (without exposing secrets) if configured improperly.
@@ -120,6 +140,23 @@ export function getVerifiedStagingEnvironment(): StagingTestEnvironment | null {
   if (parsedUrl.port !== "" && parsedUrl.port !== "443") {
     throw new Error(
       `Security violation: TALKMATE_STAGING_SUPABASE_URL contains unexpected port '${parsedUrl.port}'. Expected standard HTTPS port 443.`
+    );
+  }
+
+  // Validate no path segments, query parameters, or fragments
+  if (parsedUrl.pathname !== "" && parsedUrl.pathname !== "/") {
+    throw new Error(
+      `Security violation: TALKMATE_STAGING_SUPABASE_URL must not contain path segments. Found '${parsedUrl.pathname}'.`
+    );
+  }
+  if (parsedUrl.search) {
+    throw new Error(
+      "Security violation: TALKMATE_STAGING_SUPABASE_URL must not contain query parameters."
+    );
+  }
+  if (parsedUrl.hash) {
+    throw new Error(
+      "Security violation: TALKMATE_STAGING_SUPABASE_URL must not contain URL fragments."
     );
   }
 
@@ -206,13 +243,47 @@ export function getVerifiedStagingPostgresEnvironment(): StagingPostgresEnvironm
   }
 
   // Validate that host belongs to expected Supabase staging domain
-  const isValidDirectDb = trimmedHost === `db.${projectRef}.supabase.co`;
-  const isValidPooler = trimmedHost.endsWith(".pooler.supabase.com");
+  const isDirectDb = trimmedHost === `db.${projectRef}.supabase.co`;
+  const isPoolerHost = /^aws-[0-9]+-[a-z0-9-]+\.pooler\.supabase\.com$/.test(trimmedHost);
 
-  if (!isValidDirectDb && !isValidPooler) {
+  if (!isDirectDb && !isPoolerHost) {
     throw new Error(
       `Security violation: PostgreSQL host '${trimmedHost}' does not match expected staging host pattern for project '${projectRef}'.`
     );
+  }
+
+  if (isDirectDb) {
+    if (port !== 5432) {
+      throw new Error(
+        `Security violation: Direct PostgreSQL connection to '${trimmedHost}' must use port 5432. Found '${port}'.`
+      );
+    }
+    if (user.toLowerCase().includes(FORBIDDEN_PRODUCTION_PROJECT_REF)) {
+      throw new Error(
+        "Security violation: PostgreSQL user matches production project reference. PostgreSQL tests cannot target production."
+      );
+    }
+  } else if (isPoolerHost) {
+    if (port !== 5432 && port !== 6543) {
+      throw new Error(
+        `Security violation: PostgreSQL pooler connection to '${trimmedHost}' must use port 5432 or 6543. Found '${port}'.`
+      );
+    }
+    const trimmedUser = user.trim().toLowerCase();
+    if (trimmedUser.includes(FORBIDDEN_PRODUCTION_PROJECT_REF)) {
+      throw new Error(
+        "Security violation: PostgreSQL pooler user matches production project reference. PostgreSQL tests cannot target production."
+      );
+    }
+    const isPoolerUserForProject =
+      trimmedUser.endsWith(`.${projectRef}`) ||
+      trimmedUser === `postgres.${projectRef}` ||
+      trimmedUser.includes(projectRef);
+    if (!isPoolerUserForProject) {
+      throw new Error(
+        `Security violation: PostgreSQL pooler username '${user}' does not belong to staging project '${projectRef}'. Expected user format 'postgres.${projectRef}'.`
+      );
+    }
   }
 
   return {

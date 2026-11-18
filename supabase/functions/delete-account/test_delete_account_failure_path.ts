@@ -590,6 +590,65 @@ Deno.test("Real Lifecycle: Safe retry when run 1 failed at Auth deletion succeed
   assertEquals(authDeleteCalled, true);
 });
 
+Deno.test("Concurrent Requests: Concurrent deletion requests for the same user handle race conditions safely", async () => {
+  const userId = "99999999-9999-9999-9999-999999999999";
+  let authDeleteCount = 0;
+
+  const mockUserClient = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: userId, email: "user@test.com" } },
+        error: null,
+      }),
+    },
+    rpc: async () => ({ data: null, error: null }),
+  };
+
+  const mockAdminClient = {
+    storage: {
+      from: () => ({
+        list: async () => ({ data: [], error: null }),
+        remove: async () => ({ data: [], error: null }),
+      }),
+    },
+    auth: {
+      admin: {
+        deleteUser: async () => {
+          authDeleteCount++;
+          if (authDeleteCount === 1) {
+            return { data: { user: null }, error: null };
+          } else {
+            // Subsequent concurrent call sees user already deleted
+            return { data: { user: null }, error: { message: "User not found", status: 404 } };
+          }
+        },
+      },
+    },
+  };
+
+  const createReq = () =>
+    new Request("https://mock.supabase.co/functions/v1/delete-account", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer valid_user_jwt",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+  const [res1, res2] = await Promise.all([
+    handleDeleteAccount(createReq(), { ...MOCK_CONFIG, userClient: mockUserClient, adminClient: mockAdminClient }),
+    handleDeleteAccount(createReq(), { ...MOCK_CONFIG, userClient: mockUserClient, adminClient: mockAdminClient }),
+  ]);
+
+  assertEquals(res1.status, 200);
+  assertEquals(res2.status, 200);
+  const data1 = await res1.json();
+  const data2 = await res2.json();
+  assertEquals(data1.success, true);
+  assertEquals(data2.success, true);
+});
+
 Deno.test("Full Success: Clean end-to-end deletion with Storage files and Auth removal", async () => {
   const userId = "88888888-8888-8888-8888-888888888888";
   let rpcCalled = false;
