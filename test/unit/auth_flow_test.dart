@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:talkmate_ai/controllers/auth_controller.dart';
 import 'package:talkmate_ai/data/models/device_model.dart';
 import 'package:talkmate_ai/data/models/user_model.dart';
 import 'package:talkmate_ai/data/repositories/contracts/i_user_repository.dart';
+import 'package:talkmate_ai/services/auth/supabase_auth_service.dart';
 
 class MockUserRepository implements IUserRepository {
   final Map<String, AppUser> _users = {};
@@ -88,6 +93,16 @@ class MockUserRepository implements IUserRepository {
 
   @override
   Future<void> revokeAllOtherDevices(String userId, String currentDeviceId) async {}
+}
+
+class MockAuthService extends SupabaseAuthService {
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<AuthResponse> signIn({required String email, required String password}) async {
+    return AuthResponse();
+  }
 }
 
 void main() {
@@ -177,38 +192,173 @@ void main() {
       expect(emailResults.length, 2);
     });
 
-    test('deleteAccount failure rethrows exception and preserves session state', () async {
-      authController.setMockUser('user_retain_id', 'Test User', 'test@talkmate.ai');
-      expect(authController.isLoggedIn, true);
-      expect(authController.userId, 'user_retain_id');
-
-      // Attempting deletion without live Supabase fails and rethrows
-      await expectLater(
-        authController.deleteAccount(password: 'dummy_pwd'),
-        throwsA(anything),
-      );
-
-      // Session state must NOT be wiped when deletion fails
-      expect(authController.isLoggedIn, true);
-      expect(authController.userId, 'user_retain_id');
-      expect(authController.userEmail, 'test@talkmate.ai');
-      expect(authController.isLoading, false);
-    });
-
-    test('deleteAccount network exception skips local credential wipe and resets loading state', () async {
-      authController.setMockUser('user_network_err', 'Network Test', 'net@talkmate.ai');
+    test('deleteAccount transport failure (SocketException) rethrows error, resets isLoading, and directly preserves SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'is_logged_in': true,
+        'user_id': 'user_socket_fail',
+        'user_email': 'socket@talkmate.ai',
+        'user_name': 'Socket Test',
+        'auth_token': 'persisted_bearer_jwt_123',
+      });
+      authController.setMockUser('user_socket_fail', 'Socket Test', 'socket@talkmate.ai');
+      authController.authService = MockAuthService();
       expect(authController.isLoggedIn, true);
 
-      // Empty password invokes functions.invoke directly, simulating network/transport failure
+      // Injected functionsInvoker throws genuine SocketException
+      authController.functionsInvoker = (fn) async {
+        throw const SocketException('Connection refused to Supabase Functions Gateway');
+      };
+
       await expectLater(
         authController.deleteAccount(password: ''),
-        throwsA(anything),
+        throwsA(isA<SocketException>()),
       );
 
-      // Verify no false logout or clearing occurred
-      expect(authController.isLoggedIn, true);
-      expect(authController.userId, 'user_network_err');
+      // Verify controller state
       expect(authController.isLoading, false);
+      expect(authController.isLoggedIn, true);
+      expect(authController.userId, 'user_socket_fail');
+
+      // Verify SharedPreferences directly: NO PREMATURE CREDENTIAL WIPE
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is_logged_in'), true);
+      expect(prefs.getString('user_id'), 'user_socket_fail');
+      expect(prefs.getString('user_email'), 'socket@talkmate.ai');
+      expect(prefs.getString('auth_token'), 'persisted_bearer_jwt_123');
+    });
+
+    test('deleteAccount server-side HTTP 500 error rethrows error, resets isLoading, and directly preserves SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'is_logged_in': true,
+        'user_id': 'user_500_fail',
+        'user_email': 'err500@talkmate.ai',
+        'auth_token': 'persisted_jwt_500',
+      });
+      authController.setMockUser('user_500_fail', 'Err 500', 'err500@talkmate.ai');
+      authController.authService = MockAuthService();
+      expect(authController.isLoggedIn, true);
+
+      // Injected functionsInvoker returns 500 with server error payload
+      authController.functionsInvoker = (fn) async {
+        return FunctionResponse(
+          status: 500,
+          data: {'error': 'Failed to clean up user database records. Account deletion aborted.'},
+        );
+      };
+
+      await expectLater(
+        authController.deleteAccount(password: ''),
+        throwsA(predicate((e) =>
+            e is Exception &&
+            e.toString().contains('Failed to clean up user database records'))),
+      );
+
+      // Verify controller state
+      expect(authController.isLoading, false);
+      expect(authController.isLoggedIn, true);
+      expect(authController.userId, 'user_500_fail');
+
+      // Verify SharedPreferences directly: CREDENTIALS PRESERVED
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is_logged_in'), true);
+      expect(prefs.getString('user_id'), 'user_500_fail');
+      expect(prefs.getString('auth_token'), 'persisted_jwt_500');
+    });
+
+    test('deleteAccount authentication failure (HTTP 401) rethrows error, resets isLoading, and directly preserves SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'is_logged_in': true,
+        'user_id': 'user_401_fail',
+        'user_email': 'err401@talkmate.ai',
+        'auth_token': 'expired_jwt_sample',
+      });
+      authController.setMockUser('user_401_fail', 'Err 401', 'err401@talkmate.ai');
+      authController.authService = MockAuthService();
+      expect(authController.isLoggedIn, true);
+
+      authController.functionsInvoker = (fn) async {
+        return FunctionResponse(
+          status: 401,
+          data: {'error': 'Unauthorized: Invalid or expired session'},
+        );
+      };
+
+      await expectLater(
+        authController.deleteAccount(password: ''),
+        throwsA(predicate((e) =>
+            e is Exception &&
+            e.toString().contains('Unauthorized: Invalid or expired session'))),
+      );
+
+      expect(authController.isLoading, false);
+      expect(authController.isLoggedIn, true);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is_logged_in'), true);
+      expect(prefs.getString('user_id'), 'user_401_fail');
+    });
+
+    test('deleteAccount connection timeout (TimeoutException) rethrows error, resets isLoading, and directly preserves SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'is_logged_in': true,
+        'user_id': 'user_timeout',
+        'auth_token': 'persisted_jwt_timeout',
+      });
+      authController.setMockUser('user_timeout', 'Timeout Test', 'timeout@talkmate.ai');
+      authController.authService = MockAuthService();
+
+      authController.functionsInvoker = (fn) async {
+        throw TimeoutException('Client network connection timed out waiting for gateway');
+      };
+
+      await expectLater(
+        authController.deleteAccount(password: ''),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      expect(authController.isLoading, false);
+      expect(authController.isLoggedIn, true);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is_logged_in'), true);
+      expect(prefs.getString('user_id'), 'user_timeout');
+    });
+
+    test('deleteAccount confirmed server-side HTTP 200 success resets isLoading, sets isLoggedIn=false, and directly wipes SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'is_logged_in': true,
+        'user_id': 'user_success_wipe',
+        'user_email': 'wipe@talkmate.ai',
+        'user_name': 'Wipe Test',
+        'auth_token': 'to_be_deleted_token',
+      });
+      authController.setMockUser('user_success_wipe', 'Wipe Test', 'wipe@talkmate.ai');
+      authController.authService = MockAuthService();
+      expect(authController.isLoggedIn, true);
+
+      // Injected functionsInvoker returns 200 success
+      authController.functionsInvoker = (fn) async {
+        return FunctionResponse(
+          status: 200,
+          data: {'success': true, 'message': 'Account and authentication identity successfully deleted'},
+        );
+      };
+
+      await authController.deleteAccount(password: '');
+
+      // Controller state must be fully cleared
+      expect(authController.isLoading, false);
+      expect(authController.isLoggedIn, false);
+      expect(authController.userId, isEmpty);
+      expect(authController.userEmail, isEmpty);
+      expect(authController.userName, isEmpty);
+
+      // Verify persistent SharedPreferences directly: FULLY WIPED
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('is_logged_in'), isNull);
+      expect(prefs.getString('user_id'), isNull);
+      expect(prefs.getString('user_email'), isNull);
+      expect(prefs.getString('auth_token'), isNull);
     });
   });
 }

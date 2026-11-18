@@ -34,9 +34,15 @@ class AuthController extends GetxController {
   final RxString _userPhoto = ''.obs;
   final RxBool _hasSeenOnboarding = false.obs;
 
-  final SupabaseAuthService _authService = SupabaseAuthService();
+  SupabaseAuthService _authService = SupabaseAuthService();
   StreamSubscription<AuthState>? _authSub;
   Timer? _heartbeatTimer;
+
+  /// Dependency injection hook for Auth Service
+  set authService(SupabaseAuthService service) => _authService = service;
+
+  /// Dependency injection hook for Edge Functions invocation (defaults to Supabase.instance.client.functions.invoke)
+  Future<FunctionResponse> Function(String functionName)? functionsInvoker;
 
   // Getters
   bool get isLoggedIn => _isLoggedIn.value;
@@ -417,9 +423,9 @@ class AuthController extends GetxController {
 
       // Invoke server-controlled complete account deletion (cleans DB, storage, and deletes Supabase Auth identity)
       try {
-        final res = await Supabase.instance.client.functions.invoke(
-          'delete-account',
-        );
+        final res = functionsInvoker != null
+            ? await functionsInvoker!('delete-account')
+            : await Supabase.instance.client.functions.invoke('delete-account');
         if (res.status != 200) {
           final dynamic data = res.data;
           final String errMsg = data is Map && data['error'] != null

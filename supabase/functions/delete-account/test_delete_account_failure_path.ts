@@ -866,8 +866,197 @@ Deno.test('Full Success: Clean end-to-end deletion with Storage files and Auth r
 });
 
 // ============================================================================
-// 4. STORAGE PARTIAL FAILURE & RETRY RECOVERY TESTS
+// 4. STORAGE PARTIAL FAILURE & STATEFUL RETRY RECOVERY TESTS (Workstream A)
 // ============================================================================
+
+/**
+ * Faithful, stateful Storage backend that maintains real persistent Map-backed state
+ * across sequential deletion attempts, dynamically supporting multi-page listing,
+ * multi-batch removal, and controlled partial failure injection.
+ */
+class StatefulStorageBackend {
+  public files = new Map<string, { id: string; name: string }>();
+  public removeCallCount = 0;
+  public failOnBatchNumber: number | null = null;
+  public deletedHistory: string[] = [];
+
+  constructor(initialPaths: string[]) {
+    for (const p of initialPaths) {
+      this.files.set(p, { id: crypto.randomUUID(), name: p.split('/').pop()! });
+    }
+  }
+
+  get remainingCount(): number {
+    return this.files.size;
+  }
+
+  get remainingPaths(): string[] {
+    return Array.from(this.files.keys()).sort();
+  }
+
+  from(_bucket: string) {
+    return {
+      list: async (
+        folder: string,
+        opts?: { limit?: number; offset?: number },
+      ) => {
+        const offset = opts?.offset || 0;
+        const limit = opts?.limit || 100;
+        const matching: { name: string; id: string }[] = [];
+
+        for (const [path, file] of this.files.entries()) {
+          if (path.startsWith(folder ? `${folder}/` : '')) {
+            matching.push({ name: file.name, id: file.id });
+          }
+        }
+        matching.sort((a, b) => a.name.localeCompare(b.name));
+        const paged = matching.slice(offset, offset + limit);
+        return { data: paged, error: null };
+      },
+      remove: async (paths: string[]) => {
+        this.removeCallCount++;
+        if (
+          this.failOnBatchNumber !== null &&
+          this.removeCallCount === this.failOnBatchNumber
+        ) {
+          return {
+            data: null,
+            error: {
+              message: 'Storage S3 gateway connection dropped on batch ' +
+                this.removeCallCount,
+            },
+          };
+        }
+        for (const p of paths) {
+          this.files.delete(p);
+          this.deletedHistory.push(p);
+        }
+        return { data: paths.map((p) => ({ name: p })), error: null };
+      },
+    };
+  }
+}
+
+Deno.test('Workstream A.1: Stateful Storage Partial Failure (150 objects, Batch 2 fails 500, Auth aborted) and Retry against shared persistent state completes 200', async () => {
+  const userId = 'stateful-user-1111-2222-3333-444444444444';
+  let authDeleteCalled = false;
+  let dbRpcCallCount = 0;
+
+  // 1. Create 150 Storage objects owned by user (crosses the 100-object batch boundary: Batch 1 has 100, Batch 2 has 50)
+  const initialPaths = Array.from(
+    { length: 150 },
+    (_, i) => `users/${userId}/file_${String(i).padStart(3, '0')}.dat`,
+  );
+  const persistentStorage = new StatefulStorageBackend(initialPaths);
+  assertEquals(persistentStorage.remainingCount, 150);
+
+  // Configure failure on batch 2 of removal
+  persistentStorage.failOnBatchNumber = 2;
+
+  // Reusable user client with valid session JWT
+  const mockUserClient = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: userId, email: 'stateful@talkmate.ai' } },
+        error: null,
+      }),
+    },
+    rpc: async (fnName: string) => {
+      assertEquals(fnName, 'delete_user_account');
+      dbRpcCallCount++;
+      return { data: null, error: null };
+    },
+  };
+
+  const mockAdminClient = {
+    storage: persistentStorage,
+    auth: {
+      admin: {
+        deleteUser: async (id: string) => {
+          assertEquals(id, userId);
+          authDeleteCalled = true;
+          return { data: { user: null }, error: null };
+        },
+      },
+    },
+  };
+
+  const createReq = () =>
+    new Request('https://mock.supabase.co/functions/v1/delete-account', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer valid_user_jwt',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+  // --- ATTEMPT 1: Fails on batch 2 of storage cleanup ---
+  const res1 = await handleDeleteAccount(createReq(), {
+    ...MOCK_CONFIG,
+    userClient: mockUserClient,
+    adminClient: mockAdminClient,
+  });
+
+  assertEquals(
+    res1.status,
+    500,
+    'Partial storage removal failure must return 500',
+  );
+  assertEquals(
+    authDeleteCalled,
+    false,
+    'Auth deletion must NOT occur when storage fails',
+  );
+  assertEquals(dbRpcCallCount, 1, 'Database cleanup executed on attempt 1');
+
+  // Verify actual persistent Storage state after partial failure:
+  // Batch 1 (first 100 files) was permanently removed; exactly 50 files remain in persistent storage!
+  assertEquals(
+    persistentStorage.remainingCount,
+    50,
+    'Exactly 50 files must remain after batch 1 success and batch 2 failure',
+  );
+  assertEquals(
+    persistentStorage.deletedHistory.length,
+    100,
+    '100 files were permanently removed from storage',
+  );
+
+  // --- ATTEMPT 2: RETRY AGAINST THE EXACT SAME PERSISTENT STORAGE INSTANCE ---
+  // Transient failure cleared
+  persistentStorage.failOnBatchNumber = null;
+
+  const res2 = await handleDeleteAccount(createReq(), {
+    ...MOCK_CONFIG,
+    userClient: mockUserClient,
+    adminClient: mockAdminClient,
+  });
+
+  assertEquals(
+    res2.status,
+    200,
+    'Retry against persistent state must succeed with 200',
+  );
+  assertEquals(dbRpcCallCount, 2, 'Idempotent DB cleanup repeated on retry');
+  assertEquals(
+    authDeleteCalled,
+    true,
+    'Auth deletion must be executed after all storage files are removed',
+  );
+
+  // Final verification: 0 files remain in persistent storage; all 150 files deleted!
+  assertEquals(
+    persistentStorage.remainingCount,
+    0,
+    'All user files must be 100% removed from storage',
+  );
+  assertEquals(
+    persistentStorage.deletedHistory.length,
+    150,
+    'All 150 files recorded as deleted',
+  );
+});
 
 Deno.test('Storage Partial Failure & Retry: Failure on removal in run 1 fails closed (500), and run 2 cleanly discovers remaining objects and deletes Auth (200)', async () => {
   const userId = 'bbbb2222-cccc-3333-dddd-444444444444';
