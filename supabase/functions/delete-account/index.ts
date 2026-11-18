@@ -37,7 +37,16 @@ function parseRequiredKey(envVarName: string): string {
   return defaultKey.trim();
 }
 
-serve(async (req: Request) => {
+export async function handleDeleteAccount(
+  req: Request,
+  overrides?: {
+    supabaseUrl?: string;
+    publishableKey?: string;
+    secretKey?: string;
+    userClient?: any;
+    adminClient?: any;
+  }
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -50,7 +59,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseUrl = overrides?.supabaseUrl || Deno.env.get("SUPABASE_URL");
     if (!supabaseUrl || supabaseUrl.trim().length === 0) {
       console.error(JSON.stringify({
         event: "CONFIG_ERROR",
@@ -66,19 +75,24 @@ serve(async (req: Request) => {
     let publishableKey: string;
     let secretKey: string;
 
-    try {
-      publishableKey = parseRequiredKey("SUPABASE_PUBLISHABLE_KEYS");
-      secretKey = parseRequiredKey("SUPABASE_SECRET_KEYS");
-    } catch (keyErr) {
-      console.error(JSON.stringify({
-        event: "CONFIG_ERROR",
-        message: keyErr instanceof Error ? keyErr.message : "Key configuration parsing failed",
-        timestamp: new Date().toISOString(),
-      }));
-      return new Response(
-        JSON.stringify({ error: "Internal server configuration error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (overrides?.publishableKey && overrides?.secretKey) {
+      publishableKey = overrides.publishableKey;
+      secretKey = overrides.secretKey;
+    } else {
+      try {
+        publishableKey = parseRequiredKey("SUPABASE_PUBLISHABLE_KEYS");
+        secretKey = parseRequiredKey("SUPABASE_SECRET_KEYS");
+      } catch (keyErr) {
+        console.error(JSON.stringify({
+          event: "CONFIG_ERROR",
+          message: keyErr instanceof Error ? keyErr.message : "Key configuration parsing failed",
+          timestamp: new Date().toISOString(),
+        }));
+        return new Response(
+          JSON.stringify({ error: "Internal server configuration error" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // 1. Authentication Header Extraction
@@ -91,7 +105,7 @@ serve(async (req: Request) => {
     }
 
     // 2. Validate user identity using Supabase Auth
-    const userClient = createClient(supabaseUrl, publishableKey, {
+    const userClient = overrides?.userClient || createClient(supabaseUrl, publishableKey, {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false },
     });
@@ -129,7 +143,7 @@ serve(async (req: Request) => {
     }
 
     // 4. Initialize privileged admin client for authorized server-side operations
-    const adminClient = createClient(supabaseUrl, secretKey, {
+    const adminClient = overrides?.adminClient || createClient(supabaseUrl, secretKey, {
       auth: { persistSession: false },
     });
 
@@ -137,13 +151,18 @@ serve(async (req: Request) => {
     // We execute via userClient so auth.uid() is populated as authenticatedUserId
     const { error: rpcError } = await userClient.rpc("delete_user_account");
     if (rpcError) {
-      // Check if error is because profile is already gone (idempotent retry)
-      console.warn(JSON.stringify({
-        event: "RPC_CLEANUP_NOTE",
+      console.error(JSON.stringify({
+        event: "ACCOUNT_DELETION_RPC_FAILED",
         userIdHash: authenticatedUserId.substring(0, 8),
         errorCode: rpcError.code,
-        message: "RPC delete_user_account encountered note or non-fatal condition",
+        message: "RPC delete_user_account failed. Account deletion aborted to prevent partial deletion state.",
       }));
+      return new Response(
+        JSON.stringify({
+          error: "Failed to clean up user database records. Account deletion aborted.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // 6. Safe Storage Cleanup (delete private objects in users/{userId}/*)
@@ -154,7 +173,7 @@ serve(async (req: Request) => {
         .list(userPrefix);
 
       if (userFiles && userFiles.length > 0) {
-        const pathsToDelete = userFiles.map((f) => `${userPrefix}/${f.name}`);
+        const pathsToDelete = userFiles.map((f: any) => `${userPrefix}/${f.name}`);
         await adminClient.storage.from("talkmate").remove(pathsToDelete);
       }
     } catch (storageErr) {
@@ -205,4 +224,8 @@ serve(async (req: Request) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+}
+
+serve(async (req: Request) => {
+  return await handleDeleteAccount(req);
 });

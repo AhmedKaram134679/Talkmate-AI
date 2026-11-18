@@ -61,7 +61,7 @@ Deno.test("SEC-03 / SEC-07: Unauthenticated request to purge_old_data is denied 
   assert(data.message.includes("permission denied for function purge_old_data"));
 });
 
-Deno.test("SEC-03 / SEC-07: Anon role JWT request to purge_old_data is denied (401)", async () => {
+Deno.test("SEC-03 / SEC-07: Malformed or non-JWT Bearer token to purge_old_data is denied (401)", async () => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/purge_old_data`, {
     method: "POST",
     headers: {
@@ -87,7 +87,6 @@ Deno.test("SEC-03 / SEC-07: Authenticated user JWT to purge_old_data is denied (
     method: "POST",
     headers: {
       "apikey": SECRET_KEY,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -141,7 +140,6 @@ Deno.test("SEC-03 / SEC-07: Authenticated user JWT to purge_old_data is denied (
       method: "DELETE",
       headers: {
         "apikey": SECRET_KEY,
-        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
     await delRes.text();
@@ -153,7 +151,6 @@ Deno.test("SEC-03: Service role invocation with valid retention_days succeeds (2
     method: "POST",
     headers: {
       "apikey": SECRET_KEY,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ retention_days: 90 }),
@@ -168,7 +165,6 @@ Deno.test("SEC-03: Service role invocation with invalid retention_days (< 1) is 
     method: "POST",
     headers: {
       "apikey": SECRET_KEY,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ retention_days: 0 }),
@@ -185,7 +181,6 @@ Deno.test("SEC-03: Service role invocation with invalid retention_days (> 3650) 
     method: "POST",
     headers: {
       "apikey": SECRET_KEY,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ retention_days: 5000 }),

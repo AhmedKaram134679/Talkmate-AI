@@ -53,7 +53,6 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
     method: "POST",
     headers: {
       "apikey": SECRET_KEY,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -133,7 +132,6 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
       method: "GET",
       headers: {
         "apikey": SECRET_KEY,
-        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
 
@@ -169,7 +167,6 @@ Deno.test("SEC-02: Complete account deletion removes Auth identity and database 
         method: "DELETE",
         headers: {
           "apikey": SECRET_KEY,
-          "Authorization": `Bearer ${SECRET_KEY}`,
         },
       });
       await cleanup.text();

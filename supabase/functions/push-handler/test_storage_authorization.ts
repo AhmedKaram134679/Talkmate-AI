@@ -63,7 +63,6 @@ async function createAndLoginUser(label: string): Promise<TestUser> {
     method: "POST",
     headers: {
       "apikey": SECRET_KEY!,
-      "Authorization": `Bearer ${SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -102,7 +101,6 @@ async function deleteUser(id: string) {
       method: "DELETE",
       headers: {
         "apikey": SECRET_KEY!,
-        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
     await res.text();
@@ -127,7 +125,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
       method: "POST",
       headers: {
         "apikey": SECRET_KEY!,
-        "Authorization": `Bearer ${SECRET_KEY}`,
         "Content-Type": "application/json",
         "Prefer": "return=representation",
       },
@@ -146,7 +143,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
       method: "POST",
       headers: {
         "apikey": SECRET_KEY!,
-        "Authorization": `Bearer ${SECRET_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([
@@ -235,7 +231,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
       method: "DELETE",
       headers: {
         "apikey": SECRET_KEY!,
-        "Authorization": `Bearer ${SECRET_KEY}`,
       },
     });
     assertEquals(removeDavid.status, 204, "Failed to remove David from participants");
@@ -326,7 +321,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
           method: "DELETE",
           headers: {
             "apikey": SECRET_KEY!,
-            "Authorization": `Bearer ${SECRET_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -341,7 +335,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
           method: "DELETE",
           headers: {
             "apikey": SECRET_KEY!,
-            "Authorization": `Bearer ${SECRET_KEY}`,
           },
         });
         await delParts.text();
@@ -350,7 +343,6 @@ Deno.test("SEC-05: Real Supabase Storage API Group & User Authorization Suite", 
           method: "DELETE",
           headers: {
             "apikey": SECRET_KEY!,
-            "Authorization": `Bearer ${SECRET_KEY}`,
           },
         });
         await delConv.text();

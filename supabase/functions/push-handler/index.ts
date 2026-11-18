@@ -802,24 +802,32 @@ serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
   // STRICT CALLER AUTHENTICATION & AUTHORIZATION
+  const apiKeyHeader = req.headers.get("apikey") || req.headers.get("apiKey") || req.headers.get("x-api-key");
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    StructuredLogger.security("Unauthorized push-handler request: Missing or invalid Authorization header");
-    return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
 
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   let callerRole: string | null = null;
   let callerUserId: string | null = null;
 
-  if (token === secretKey) {
+  // 1. Administrative caller check (Secret Key passed via apikey or legacy Bearer header)
+  const isSecretInApiKey = Boolean(apiKeyHeader && apiKeyHeader.trim() === secretKey);
+  const bearerToken = authHeader && authHeader.startsWith("Bearer ")
+    ? authHeader.replace(/^Bearer\s+/i, "").trim()
+    : null;
+  const isSecretInBearer = Boolean(bearerToken && bearerToken === secretKey);
+
+  if (isSecretInApiKey || isSecretInBearer) {
     callerRole = "service_role";
   } else {
-    // Verify user JWT with Supabase Auth
-    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    // 2. User JWT caller verification (Secret/Publishable key is NEVER accepted as user identity)
+    if (!bearerToken) {
+      StructuredLogger.security("Unauthorized push-handler request: Missing or invalid Authorization header");
+      return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(bearerToken);
     if (authError || !userData?.user) {
       StructuredLogger.security("Unauthorized push-handler request: Invalid JWT");
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
