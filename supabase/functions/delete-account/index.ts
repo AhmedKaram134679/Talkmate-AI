@@ -37,6 +37,75 @@ function parseRequiredKey(envVarName: string): string {
   return defaultKey.trim();
 }
 
+interface StorageFileItem {
+  name: string;
+  id?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function listAllStorageFiles(
+  storageClient: any,
+  bucketName: string,
+  rootPrefix: string
+): Promise<{ files: string[]; error: unknown | null }> {
+  const discoveredFiles: string[] = [];
+  const foldersToTraverse: string[] = [rootPrefix];
+  const MAX_DISCOVERED_FILES = 2000;
+  const PAGE_SIZE = 100;
+
+  while (foldersToTraverse.length > 0) {
+    const currentFolder = foldersToTraverse.shift()!;
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await storageClient
+        .from(bucketName)
+        .list(currentFolder, {
+          limit: PAGE_SIZE,
+          offset,
+          sortBy: { column: "name", order: "asc" },
+        });
+
+      if (error) {
+        return { files: [], error };
+      }
+
+      if (!data || data.length === 0) {
+        break;
+      }
+
+      for (const item of (data as StorageFileItem[])) {
+        if (!item.name || item.name === ".emptyFolderPlaceholder") continue;
+
+        const fullPath = currentFolder ? `${currentFolder}/${item.name}` : item.name;
+
+        // In Supabase storage, folders have id === null or metadata === null
+        const isFolder = item.id === null || (item.metadata === null && !item.name.includes("."));
+        if (isFolder) {
+          foldersToTraverse.push(fullPath);
+        } else {
+          discoveredFiles.push(fullPath);
+          if (discoveredFiles.length >= MAX_DISCOVERED_FILES) {
+            return {
+              files: discoveredFiles,
+              error: new Error(`Storage discovery exceeded maximum limit of ${MAX_DISCOVERED_FILES} files`),
+            };
+          }
+        }
+      }
+
+      if (data.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        offset += PAGE_SIZE;
+      }
+    }
+  }
+
+  return { files: discoveredFiles, error: null };
+}
+
 export async function handleDeleteAccount(
   req: Request,
   overrides?: {
@@ -165,24 +234,54 @@ export async function handleDeleteAccount(
       );
     }
 
-    // 6. Safe Storage Cleanup (delete private objects in users/{userId}/*)
-    try {
-      const userPrefix = `users/${authenticatedUserId}`;
-      const { data: userFiles } = await adminClient.storage
-        .from("talkmate")
-        .list(userPrefix);
+    // 6. Reliable Storage Cleanup (recursively discover and delete all user-owned objects)
+    const userPrefix = `users/${authenticatedUserId}`;
+    const { files: pathsToDelete, error: storageListError } = await listAllStorageFiles(
+      adminClient.storage,
+      "talkmate",
+      userPrefix
+    );
 
-      if (userFiles && userFiles.length > 0) {
-        const pathsToDelete = userFiles.map((f: any) => `${userPrefix}/${f.name}`);
-        await adminClient.storage.from("talkmate").remove(pathsToDelete);
-      }
-    } catch (storageErr) {
-      // Storage cleanup failure does not block auth deletion
-      console.warn(JSON.stringify({
-        event: "STORAGE_CLEANUP_WARNING",
+    if (storageListError) {
+      console.error(JSON.stringify({
+        event: "ACCOUNT_DELETION_STORAGE_LIST_FAILED",
         userIdHash: authenticatedUserId.substring(0, 8),
-        message: "Storage cleanup encountered non-fatal error",
+        error: storageListError instanceof Error ? storageListError.message : String(storageListError),
+        message: "Failed to list user storage objects. Account deletion aborted to prevent partial deletion state.",
       }));
+      return new Response(
+        JSON.stringify({
+          error: "Failed to clean up user storage objects. Account deletion aborted.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (pathsToDelete.length > 0) {
+      // Batch remove up to 100 paths at a time per Supabase Storage API limits
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < pathsToDelete.length; i += BATCH_SIZE) {
+        const batch = pathsToDelete.slice(i, i + BATCH_SIZE);
+        const { error: removeError } = await adminClient.storage
+          .from("talkmate")
+          .remove(batch);
+
+        if (removeError) {
+          console.error(JSON.stringify({
+            event: "ACCOUNT_DELETION_STORAGE_REMOVE_FAILED",
+            userIdHash: authenticatedUserId.substring(0, 8),
+            error: removeError instanceof Error ? removeError.message : String(removeError),
+            batchCount: batch.length,
+            message: "Failed to remove user storage objects. Account deletion aborted to prevent partial deletion state.",
+          }));
+          return new Response(
+            JSON.stringify({
+              error: "Failed to clean up user storage objects. Account deletion aborted.",
+            }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
     }
 
     // 7. Delete Auth Identity via GoTrue Admin API
@@ -193,7 +292,11 @@ export async function handleDeleteAccount(
     if (authDeleteError) {
       // If user already deleted, idempotent success
       const msg = authDeleteError.message || "";
-      if (!msg.toLowerCase().includes("not found")) {
+      const isAlreadyDeleted =
+        (authDeleteError as any).status === 404 ||
+        msg.toLowerCase().includes("not found");
+
+      if (!isAlreadyDeleted) {
         console.error(JSON.stringify({
           event: "AUTH_DELETE_FAILURE",
           userIdHash: authenticatedUserId.substring(0, 8),

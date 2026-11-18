@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.42.0";
 import { initializeApp, getApps, cert, type ServiceAccount } from "npm:firebase-admin@12.7.0/app";
 import { getMessaging } from "npm:firebase-admin@12.7.0/messaging";
 import webpush from "npm:web-push@3.6.7";
@@ -798,27 +798,63 @@ interface RoutingLogEntry {
 }
 
 
-serve(async (req) => {
+function secureCompare(a?: string | null, b?: string | null): boolean {
+  if (!a || !b || typeof a !== "string" || typeof b !== "string") return false;
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
+export async function handlePushRequest(
+  req: Request,
+  overrides?: {
+    adminClient?: any;
+    secretKey?: string;
+  }
+): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+
+  const activeSecretKey = overrides?.secretKey || secretKey;
+  const activeAdminClient = overrides?.adminClient || supabaseAdmin;
 
   // STRICT CALLER AUTHENTICATION & AUTHORIZATION
   const apiKeyHeader = req.headers.get("apikey") || req.headers.get("apiKey") || req.headers.get("x-api-key");
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
 
-  let callerRole: string | null = null;
-  let callerUserId: string | null = null;
-
-  // 1. Administrative caller check (Secret Key passed via apikey or legacy Bearer header)
-  const isSecretInApiKey = Boolean(apiKeyHeader && apiKeyHeader.trim() === secretKey);
   const bearerToken = authHeader && authHeader.startsWith("Bearer ")
     ? authHeader.replace(/^Bearer\s+/i, "").trim()
     : null;
-  const isSecretInBearer = Boolean(bearerToken && bearerToken === secretKey);
 
-  if (isSecretInApiKey || isSecretInBearer) {
+  let callerRole: string | null = null;
+  let callerUserId: string | null = null;
+
+  // STRICT REJECTION: The new opaque Secret Key must NOT be supplied as a Bearer token.
+  // The Bearer scheme is strictly reserved for verified user access JWTs.
+  if (bearerToken && secureCompare(bearerToken, activeSecretKey)) {
+    StructuredLogger.security("Rejected administrative secret key supplied in Authorization header");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized: Secret key must be supplied via apikey header, not Bearer token" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // PATH 1: Administrative Server-to-Server Authentication
+  // Secret Key must be supplied through the apikey header and match server-side secretKey via secure comparison.
+  const isSecretInApiKey = Boolean(apiKeyHeader && secureCompare(apiKeyHeader.trim(), activeSecretKey));
+
+  if (isSecretInApiKey) {
     callerRole = "service_role";
+    callerUserId = null;
   } else {
-    // 2. User JWT caller verification (Secret/Publishable key is NEVER accepted as user identity)
+    // PATH 2: Authenticated User Path
+    // Requires a real user access JWT in Authorization: Bearer <jwt>
+    // Neither Publishable Key nor Secret Key alone can authenticate a user.
     if (!bearerToken) {
       StructuredLogger.security("Unauthorized push-handler request: Missing or invalid Authorization header");
       return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
@@ -827,7 +863,7 @@ serve(async (req) => {
       });
     }
 
-    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(bearerToken);
+    const { data: userData, error: authError } = await activeAdminClient.auth.getUser(bearerToken);
     if (authError || !userData?.user) {
       StructuredLogger.security("Unauthorized push-handler request: Invalid JWT");
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
@@ -881,7 +917,7 @@ serve(async (req) => {
         }
 
         // Query trusted call record from database
-        const { data: callRecord, error: callError } = await supabaseAdmin
+        const { data: callRecord, error: callError } = await activeAdminClient
           .from("calls")
           .select("id, sender_id, caller_id, receiver_id, callee_id, status")
           .eq("id", callId)
@@ -2952,6 +2988,10 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" }
     });
   }
+}
+
+serve(async (req) => {
+  return await handlePushRequest(req);
 });
 
 function _getExplanationText(key: string, segment?: string): string {

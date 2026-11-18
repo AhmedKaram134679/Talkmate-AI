@@ -362,6 +362,17 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Edge Function authentication configurations
+# push-handler serves both authenticated user JWTs and administrative server-to-server
+# Secret Key requests via apikey. Gateway verify_jwt is disabled so the function can
+# perform strict in-handler authentication for both caller categories.
+[functions.push-handler]
+verify_jwt = false
+
+# delete-account is strictly a user-scoped endpoint requiring authenticated user JWT.
+[functions.delete-account]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

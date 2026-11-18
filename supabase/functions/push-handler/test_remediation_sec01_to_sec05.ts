@@ -1,71 +1,54 @@
 // TalkMate AI - Real Database Integration Test Suite for SEC-01 through SEC-05
-// Run with: deno test --no-config --no-check --unsafely-ignore-certificate-errors --allow-net --allow-env --allow-run supabase/functions/push-handler/test_remediation_sec01_to_sec05.ts
+// Verifies PostgreSQL functions, triggers, and RLS policies against verified Staging environment.
+// Run with: deno test --allow-net --allow-env supabase/functions/push-handler/test_remediation_sec01_to_sec05.ts
 
 import { assertEquals, assertRejects, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
 
-async function getCredentials() {
-  if (Deno.env.get("PGPASSWORD")) {
-    return {
-      host: Deno.env.get("PGHOST") || "aws-1-eu-central-1.pooler.supabase.com",
-      port: Number(Deno.env.get("PGPORT") || 5432),
-      user: Deno.env.get("PGUSER") || "cli_login_postgres.icdbbfsjbslzctshxytd",
-      pass: Deno.env.get("PGPASSWORD")!,
-      database: Deno.env.get("PGDATABASE") || "postgres",
-    };
+function getCredentials() {
+  const allowStaging = Deno.env.get("TALKMATE_ALLOW_STAGING_INTEGRATION_TESTS");
+  if (allowStaging !== "true") {
+    return null;
   }
 
-  const isWindows = Deno.build.os === "windows";
-  const supabaseExe = isWindows ? "C:\\Users\\Abo-Joud-MahmouD\\scoop\\shims\\supabase.exe" : "supabase";
-  const cmd = new Deno.Command(supabaseExe, {
-    args: ["db", "dump", "--dry-run"],
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const output = await cmd.output();
-  const stdoutText = new TextDecoder().decode(output.stdout);
-  const stderrText = new TextDecoder().decode(output.stderr);
-  const text = stdoutText + "\n" + stderrText;
+  const pass = Deno.env.get("PGPASSWORD") || Deno.env.get("TALKMATE_STAGING_PGPASSWORD");
+  const host = Deno.env.get("PGHOST") || Deno.env.get("TALKMATE_STAGING_PGHOST");
+  const user = Deno.env.get("PGUSER") || Deno.env.get("TALKMATE_STAGING_PGUSER");
+  const port = Number(Deno.env.get("PGPORT") || Deno.env.get("TALKMATE_STAGING_PGPORT") || 5432);
+  const database = Deno.env.get("PGDATABASE") || Deno.env.get("TALKMATE_STAGING_PGDATABASE") || "postgres";
 
-  const hostMatch = text.match(/export PGHOST="([^"]+)"/);
-  const portMatch = text.match(/export PGPORT="([^"]+)"/);
-  const userMatch = text.match(/export PGUSER="([^"]+)"/);
-  const passMatch = text.match(/export PGPASSWORD="([^"]+)"/);
-  const dbMatch = text.match(/export PGDATABASE="([^"]+)"/);
-
-  if (!userMatch || !passMatch) {
-    console.error("Failed to parse credentials. exit code:", output.code, "stdout:", stdoutText, "stderr:", stderrText);
-    throw new Error("Could not parse supabase credentials from db dump --dry-run");
+  if (!pass || !host || !user) {
+    return null;
   }
 
-  return {
-    host: hostMatch ? hostMatch[1] : "aws-1-eu-central-1.pooler.supabase.com",
-    port: portMatch ? Number(portMatch[1]) : 5432,
-    user: userMatch![1],
-    pass: passMatch![1],
-    database: dbMatch ? dbMatch[1] : "postgres",
-  };
+  return { host, port, user, pass, database };
 }
 
-const creds = await getCredentials();
-const sql = postgres({
-  host: creds.host,
-  port: creds.port,
-  user: creds.user,
-  pass: creds.pass,
-  database: creds.database,
-  ssl: { rejectUnauthorized: false },
-  connect_timeout: 60,
-  idle_timeout: 10,
-  max: 5,
-});
+const creds = getCredentials();
+const sql = creds
+  ? postgres({
+      host: creds.host,
+      port: creds.port,
+      user: creds.user,
+      pass: creds.pass,
+      database: creds.database,
+      ssl: { rejectUnauthorized: false },
+      connect_timeout: 30,
+      idle_timeout: 10,
+      max: 5,
+    })
+  : null;
 
-// Warm up DB connection before running test suite
-try {
-  await sql`SELECT 1`;
-} catch (e) {
-  console.warn("Warm-up connection retry:", e);
-  await sql`SELECT 1`;
+// Warm up DB connection before running test suite if staging credentials exist
+if (sql) {
+  try {
+    await sql`SELECT 1`;
+  } catch (e) {
+    console.warn("Warm-up connection retry:", e);
+    try {
+      await sql`SELECT 1`;
+    } catch (_) {}
+  }
 }
 
 // Real User UUIDs
@@ -75,7 +58,7 @@ const EVE_ID = "2ae1af25-46ff-417d-b5a0-449bbbc0c1c5";
 
 // Helper to execute in simulated PostgREST authenticated context with automatic rollback
 async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE authenticated`;
     await tx`SELECT set_config('request.jwt.claim.sub', ${userId}, true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
@@ -91,7 +74,7 @@ async function asUser(userId: string, callback: (tx: any) => Promise<void>) {
 
 // Helper to execute in unauthenticated context (auth.uid() is null) with automatic rollback
 async function asUnauthenticated(callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE anon`;
     await tx`SELECT set_config('request.jwt.claim.sub', '', true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'anon', true)`;
@@ -107,7 +90,7 @@ async function asUnauthenticated(callback: (tx: any) => Promise<void>) {
 
 // Helper to execute as authenticated but without a user id (auth.uid() IS NULL)
 async function asAuthenticatedNoUid(callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE authenticated`;
     await tx`SELECT set_config('request.jwt.claim.sub', '', true)`;
     await tx`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
@@ -123,7 +106,7 @@ async function asAuthenticatedNoUid(callback: (tx: any) => Promise<void>) {
 
 // Helper to execute as service_role with automatic rollback
 async function asServiceRole(callback: (tx: any) => Promise<void>) {
-  await sql.begin(async (tx) => {
+  await sql!.begin(async (tx) => {
     await tx`SET LOCAL ROLE service_role`;
     await tx`SELECT set_config('request.jwt.claim.role', 'service_role', true)`;
     await tx`SELECT set_config('request.headers', '{"host": "icdbbfsjbslzctshxytd.supabase.co", "authorization": "dummy"}', true)`;
@@ -139,6 +122,7 @@ async function asServiceRole(callback: (tx: any) => Promise<void>) {
 function test(name: string, fn: () => Promise<void>) {
   Deno.test({
     name,
+    ignore: !sql,
     sanitizeOps: false,
     sanitizeResources: false,
     fn,
@@ -686,5 +670,5 @@ test("SEC-05.2: Storage policy restricts group avatar access to group participan
 });
 
 test("Cleanup database connection", async () => {
-  await sql.end();
+  if (sql) await sql.end();
 });
