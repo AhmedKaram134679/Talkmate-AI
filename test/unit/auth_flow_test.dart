@@ -194,5 +194,21 @@ void main() {
       expect(authController.userEmail, 'test@talkmate.ai');
       expect(authController.isLoading, false);
     });
+
+    test('deleteAccount network exception skips local credential wipe and resets loading state', () async {
+      authController.setMockUser('user_network_err', 'Network Test', 'net@talkmate.ai');
+      expect(authController.isLoggedIn, true);
+
+      // Empty password invokes functions.invoke directly, simulating network/transport failure
+      await expectLater(
+        authController.deleteAccount(password: ''),
+        throwsA(anything),
+      );
+
+      // Verify no false logout or clearing occurred
+      expect(authController.isLoggedIn, true);
+      expect(authController.userId, 'user_network_err');
+      expect(authController.isLoading, false);
+    });
   });
 }

@@ -719,6 +719,13 @@ Deno.test('Real Lifecycle: Safe retry when run 1 failed at Auth deletion succeed
   assertEquals(authDeleteCalled, true);
 });
 
+// NOTE: This unit test verifies the Edge Function's observable behavior when two requests
+// overlap in-flight (both authenticate via getUser() before either deletes the Auth user).
+// Request 1 completes Auth deletion; Request 2 receives a 404 from auth.admin.deleteUser and
+// treats it as idempotent 200 OK.
+// LIMITATION NOTICE: This unit test uses mocked RPC and storage clients. It does NOT verify
+// database-level transaction serialization, row locking, or SQL advisory locks, which require
+// a live isolated PostgreSQL environment.
 Deno.test('Concurrent Requests: Concurrent deletion requests for the same user handle race conditions safely', async () => {
   const userId = '99999999-9999-9999-9999-999999999999';
   let authDeleteCount = 0;
@@ -858,11 +865,18 @@ Deno.test('Full Success: Clean end-to-end deletion with Storage files and Auth r
   assertEquals(deletedAuthUserId, userId);
 });
 
-Deno.test('Scenario D / Network Ambiguity: Retry when Auth user was already deleted returns idempotent 200 OK', async () => {
-  const userId = 'aaaa1111-bbbb-2222-cccc-333333333333';
-  let authDeleteCalled = false;
+// ============================================================================
+// 4. STORAGE PARTIAL FAILURE & RETRY RECOVERY TESTS
+// ============================================================================
 
-  const mockUserClient = {
+Deno.test('Storage Partial Failure & Retry: Failure on removal in run 1 fails closed (500), and run 2 cleanly discovers remaining objects and deletes Auth (200)', async () => {
+  const userId = 'bbbb2222-cccc-3333-dddd-444444444444';
+  let authDeleteCalled = false;
+  let run1StorageRemoveCalled = false;
+  let run2StorageRemoveCalled = false;
+
+  // Run 1: User has 2 files in storage. Removal of file 2 fails.
+  const mockUserClientRun1 = {
     auth: {
       getUser: async () => ({
         data: { user: { id: userId, email: 'user@test.com' } },
@@ -872,25 +886,188 @@ Deno.test('Scenario D / Network Ambiguity: Retry when Auth user was already dele
     rpc: async () => ({ data: null, error: null }),
   };
 
-  const mockAdminClient = {
+  const mockAdminClientRun1 = {
     storage: {
       from: () => ({
-        list: async () => ({ data: [], error: null }),
-        remove: async () => ({ data: [], error: null }),
+        list: async () => ({
+          data: [
+            { name: 'photo.jpg', id: 'uuid-1' },
+            { name: 'voice.m4a', id: 'uuid-2' },
+          ],
+          error: null,
+        }),
+        remove: async () => {
+          run1StorageRemoveCalled = true;
+          // Storage removal fails on run 1
+          return { data: null, error: { message: 'S3 deleteObjects failed' } };
+        },
       }),
     },
     auth: {
       admin: {
         deleteUser: async () => {
           authDeleteCalled = true;
-          // Simulating Auth API reporting user already deleted (404)
-          return {
-            data: { user: null },
-            error: { message: 'User not found', status: 404 },
-          };
+          return { data: { user: null }, error: null };
         },
       },
     },
+  };
+
+  const req1 = new Request(
+    'https://mock.supabase.co/functions/v1/delete-account',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer valid_user_jwt',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const res1 = await handleDeleteAccount(req1, {
+    ...MOCK_CONFIG,
+    userClient: mockUserClientRun1,
+    adminClient: mockAdminClientRun1,
+  });
+
+  assertEquals(
+    res1.status,
+    500,
+    'Storage removal failure must fail closed with 500',
+  );
+  assertEquals(run1StorageRemoveCalled, true);
+  assertEquals(
+    authDeleteCalled,
+    false,
+    'Auth deletion must NEVER be called when storage cleanup fails',
+  );
+
+  // Run 2 (Retry): User JWT is STILL VALID because Auth deletion was aborted in Run 1.
+  // Storage discovery now finds only the remaining file, deletes it, and completes Auth deletion.
+  let run2DeletedPaths: string[] = [];
+  const mockUserClientRun2 = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: userId, email: 'user@test.com' } },
+        error: null,
+      }),
+    },
+    rpc: async () => ({ data: null, error: null }), // DB cleanup idempotent no-op
+  };
+
+  const mockAdminClientRun2 = {
+    storage: {
+      from: () => ({
+        list: async () => ({
+          data: [{ name: 'voice.m4a', id: 'uuid-2' }], // Only remaining file
+          error: null,
+        }),
+        remove: async (paths: string[]) => {
+          run2StorageRemoveCalled = true;
+          run2DeletedPaths = paths;
+          return { data: paths, error: null };
+        },
+      }),
+    },
+    auth: {
+      admin: {
+        deleteUser: async () => {
+          authDeleteCalled = true;
+          return { data: { user: null }, error: null };
+        },
+      },
+    },
+  };
+
+  const req2 = new Request(
+    'https://mock.supabase.co/functions/v1/delete-account',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer valid_user_jwt',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const res2 = await handleDeleteAccount(req2, {
+    ...MOCK_CONFIG,
+    userClient: mockUserClientRun2,
+    adminClient: mockAdminClientRun2,
+  });
+
+  assertEquals(
+    res2.status,
+    200,
+    'Retry after storage failure must complete cleanly with 200',
+  );
+  assertEquals(run2StorageRemoveCalled, true);
+  assertEquals(run2DeletedPaths, [`users/${userId}/voice.m4a`]);
+  assertEquals(
+    authDeleteCalled,
+    true,
+    'Auth deletion must be executed once storage succeeds',
+  );
+  const data2 = await res2.json();
+  assertEquals(data2.success, true);
+});
+
+Deno.test('Storage Multi-Batch Partial Failure: Batch 2 removal failure returns 500 and strictly aborts Auth deletion', async () => {
+  const userId = 'cccc3333-dddd-4444-eeee-555555555555';
+  let authDeleteCalled = false;
+  let batchIndex = 0;
+
+  // 120 files discovered: Batch 1 (100 files), Batch 2 (20 files)
+  const mockAdminClient = {
+    storage: {
+      from: () => ({
+        list: async (_folder: string, opts?: { offset?: number }) => {
+          const offset = opts?.offset || 0;
+          if (offset >= 120) {
+            return { data: [], error: null };
+          }
+          const remaining = 120 - offset;
+          const count = Math.min(100, remaining);
+          const files = Array.from({ length: count }, (_, i) => ({
+            name: `file_${offset + i}.dat`,
+            id: `id-${offset + i}`,
+          }));
+          return { data: files, error: null };
+        },
+        remove: async (_batch: string[]) => {
+          batchIndex++;
+          if (batchIndex === 1) {
+            // Batch 1 succeeds
+            return { data: [], error: null };
+          }
+          // Batch 2 fails
+          return {
+            data: null,
+            error: { message: 'Storage connection dropped on batch 2' },
+          };
+        },
+      }),
+    },
+    auth: {
+      admin: {
+        deleteUser: async () => {
+          authDeleteCalled = true;
+          return { data: { user: null }, error: null };
+        },
+      },
+    },
+  };
+
+  const mockUserClient = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: userId, email: 'user@test.com' } },
+        error: null,
+      }),
+    },
+    rpc: async () => ({ data: null, error: null }),
   };
 
   const req = new Request(
@@ -911,11 +1088,87 @@ Deno.test('Scenario D / Network Ambiguity: Retry when Auth user was already dele
     adminClient: mockAdminClient,
   });
 
-  assertEquals(res.status, 200);
+  assertEquals(res.status, 500, 'Batch 2 failure must return 500');
+  assertEquals(batchIndex, 2, 'Must have attempted batch 1 then batch 2');
+  assertEquals(
+    authDeleteCalled,
+    false,
+    'Auth deletion must NOT occur when any batch fails',
+  );
   const data = await res.json();
-  assertEquals(data.success, true);
-  assertEquals(authDeleteCalled, true);
-  assert(data.message.includes('successfully deleted'));
+  assert(data.error.includes('Failed to clean up user storage objects'));
+});
+
+// ============================================================================
+// 5. REALISTIC LIFECYCLE & ARCHITECTURAL LIMITATION DEMONSTRATION
+// ============================================================================
+
+Deno.test('Scenario D Lifecycle Reality: Once Auth identity is deleted, retry with dead JWT strictly returns 401 without running DB RPC or Storage (Fail-Closed)', async () => {
+  // ARCHITECTURAL REALITY DEMONSTRATION:
+  // When an account is completely deleted (Step 7: auth.admin.deleteUser succeeded),
+  // but the client lost connection before receiving the response and retries with the old JWT:
+  // GoTrue rejects the old JWT because the user record in auth.users no longer exists.
+  // userClient.auth.getUser() returns { user: null, error: 401 }.
+  // The Edge Function strictly returns 401 Unauthorized (Fail-Closed).
+  // It does NOT bypass authentication or execute any privileged operations.
+  let rpcCalled = false;
+  let storageListCalled = false;
+
+  const mockUserClient = {
+    auth: {
+      getUser: async () => ({
+        data: { user: null },
+        error: { message: 'User not found or session revoked', status: 401 },
+      }),
+    },
+    rpc: async () => {
+      rpcCalled = true;
+      return { data: null, error: null };
+    },
+  };
+
+  const mockAdminClient = {
+    storage: {
+      from: () => ({
+        list: async () => {
+          storageListCalled = true;
+          return { data: [], error: null };
+        },
+      }),
+    },
+  };
+
+  const req = new Request(
+    'https://mock.supabase.co/functions/v1/delete-account',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer dead_jwt_of_already_deleted_user',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  const res = await handleDeleteAccount(req, {
+    ...MOCK_CONFIG,
+    userClient: mockUserClient,
+    adminClient: mockAdminClient,
+  });
+
+  assertEquals(res.status, 401, 'Dead JWT of deleted user must return 401');
+  assertEquals(
+    rpcCalled,
+    false,
+    'DB RPC must NEVER be executed for unauthenticated caller',
+  );
+  assertEquals(
+    storageListCalled,
+    false,
+    'Storage must NEVER be accessed for unauthenticated caller',
+  );
+  const data = await res.json();
+  assert(data.error.includes('Invalid or expired session'));
 });
 
 Deno.test('HTTP Method: Non-POST methods return 405 Method Not Allowed', async () => {
